@@ -40,12 +40,12 @@ jobs:
               -c src/vehicle_bridge.c -o vehicle_bridge.o
           echo "Bridge compile: OK"
 
-  # ── Job 2: QNX cross-compile (requires SDP license secret) ──────────
+  # ── Job 2: QNX cross-compile (requires SDP — documents the full pipeline) ──
   build-qnx:
     name: "QNX Cross-Compile (x86_64-nto-qnx8.0.0)"
     runs-on: ubuntu-22.04
-    # Only runs when QNX_LICENSE_KEY secret is set (skip for forks/PRs)
-    if: ${{ secrets.QNX_LICENSE_KEY != '' }}
+    # Skipped until QNX SDP URL is configured as a repo secret
+    if: false
 
     steps:
       - name: Checkout
