@@ -1,0 +1,104 @@
+name: QNX Vehicle Resource Manager — CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ── Job 1: Logic tests on Linux (no QNX license needed) ─────────────
+  test-host-build:
+    name: "Host Build + Unit Tests (Linux)"
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y gcc make libm-dev
+
+      - name: Build CAN simulator (host mode)
+        run: |
+          gcc -Wall -Wextra -O2 -Isrc \
+              -DHOST_BUILD \
+              -o test_can_sim \
+              tests/test_can_sim.c src/can_simulator.c \
+              -lm
+          echo "Host build: OK"
+
+      - name: Run unit tests
+        run: |
+          ./test_can_sim
+          echo "Exit code: $?"
+
+      - name: Build vehicle bridge (host mode — socket logic)
+        run: |
+          gcc -Wall -Wextra -O2 -Isrc \
+              -DHOST_BUILD \
+              -c src/vehicle_bridge.c -o vehicle_bridge.o
+          echo "Bridge compile: OK"
+
+  # ── Job 2: QNX cross-compile (requires SDP license secret) ──────────
+  build-qnx:
+    name: "QNX Cross-Compile (x86_64-nto-qnx8.0.0)"
+    runs-on: ubuntu-22.04
+    # Only runs when QNX_LICENSE_KEY secret is set (skip for forks/PRs)
+    if: ${{ secrets.QNX_LICENSE_KEY != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install QNX Software Center
+        run: |
+          wget -q https://www.qnx.com/download/feature.html?programid=29178 \
+               -O qnx-setup.run || true
+          # In practice: download URL comes from myQNX account
+          # Replace with your direct download link stored as a secret:
+          # wget -q "${{ secrets.QNX_SDP_URL }}" -O qnx-setup.run
+          echo "QNX SDP download step (configure QNX_SDP_URL secret)"
+
+      - name: Setup QNX environment
+        run: |
+          # After SDP install:
+          # source ~/qnx800/qnxsdp-env.sh
+          # qcc --version
+          echo "Source qnxsdp-env.sh and verify qcc"
+
+      - name: Cross-compile for QNX x86_64
+        run: |
+          source ~/qnx800/qnxsdp-env.sh 2>/dev/null || true
+          make   # uses qcc by default
+          file vehicle_resmgrd
+
+      - name: Upload QNX binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vehicle_resmgrd-qnx-x86_64
+          path: vehicle_resmgrd
+          retention-days: 30
+
+  # ── Job 3: Static analysis ───────────────────────────────────────────
+  static-analysis:
+    name: "Static Analysis (cppcheck)"
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=all \
+                   --suppress=missingInclude \
+                   --suppress=unusedFunction \
+                   --error-exitcode=1 \
+                   -I src \
+                   -D HOST_BUILD \
+                   src/
+          echo "Static analysis: PASSED"
