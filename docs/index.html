@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QNX Vehicle Resource Manager — Docs</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --accent:    #58a6ff;
+      --accent2:   #3fb950;
+      --accent3:   #d2a679;
+      --accent4:   #f85149;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --code-bg:   #1e2532;
+      --tab-active:#21262d;
+      --radius:    6px;
+      --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 { font-size: 2rem; font-weight: 700; }
+    h2 { font-size: 1.4rem; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin: 2rem 0 .8rem; color: var(--accent); }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.4rem 0 .4rem; color: var(--accent3); }
+    h4 { font-size: .95rem; font-weight: 600; margin: 1rem 0 .3rem; color: var(--accent2); }
+    p  { margin: .5rem 0; color: #cdd9e5; }
+    ul, ol { padding-left: 1.5rem; color: #cdd9e5; }
+    li { margin: .25rem 0; }
+    code {
+      font-family: var(--mono);
+      font-size: .85em;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: .1em .35em;
+      color: #e3b341;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: .82rem;
+      line-height: 1.6;
+      color: #d2d9e2;
+      margin: .8rem 0;
+    }
+    pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+    table { width: 100%; border-collapse: collapse; margin: .8rem 0; font-size: .88rem; }
+    th { background: var(--surface); text-align: left; padding: .5rem .8rem; border: 1px solid var(--border); color: var(--accent); font-weight: 600; }
+    td { padding: .45rem .8rem; border: 1px solid var(--border); vertical-align: top; }
+    tr:nth-child(even) td { background: rgba(255,255,255,.025); }
+    .badge {
+      display: inline-block;
+      font-size: .72rem;
+      font-family: var(--mono);
+      padding: .1rem .4rem;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .badge-c    { background: #1c3a5e; color: #58a6ff; }
+    .badge-cpp  { background: #1c3a24; color: #3fb950; }
+    .badge-java { background: #3a2a10; color: #e3b341; }
+    .badge-h    { background: #2a1c3a; color: #d2a679; }
+    .badge-mk   { background: #2a1c1c; color: #f85149; }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1.2rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header .logo {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -1px;
+    }
+    header .subtitle {
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* ── Tab nav ──────────────────────────────────────────────────────── */
+    .tab-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 0;
+      padding: 0 2rem;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .9rem;
+      padding: .75rem 1.1rem;
+      white-space: nowrap;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover  { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--tab-active); }
+
+    /* ── Content ──────────────────────────────────────────────────────── */
+    .tab-content { display: none; padding: 2rem 2rem 4rem; max-width: 980px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* ── Arch diagram box ─────────────────────────────────────────────── */
+    .arch-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem 1.5rem;
+      font-family: var(--mono);
+      font-size: .8rem;
+      line-height: 1.8;
+      color: #c9d1d9;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    /* ── Callout boxes ────────────────────────────────────────────────── */
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: rgba(88,166,255,.07);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: .7rem 1rem;
+      margin: .8rem 0;
+      font-size: .9rem;
+    }
+    .callout.warn  { border-color: #e3b341; background: rgba(227,179,65,.07); }
+    .callout.green { border-color: var(--accent2); background: rgba(63,185,80,.07); }
+
+    /* ── File card ────────────────────────────────────────────────────── */
+    .file-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 1.5rem 0;
+      overflow: hidden;
+    }
+    .file-card-header {
+      background: var(--surface);
+      padding: .6rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: .88rem;
+      font-weight: 600;
+    }
+    .file-card-body { padding: 1rem 1.2rem; }
+
+    /* ── Section pill ─────────────────────────────────────────────────── */
+    .pill {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      padding: .15rem .5rem;
+      border-radius: 20px;
+      background: var(--border);
+      color: var(--muted);
+      margin-right: .3rem;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    /* ── Layer stack ──────────────────────────────────────────────────── */
+    .layer-stack { display: flex; flex-direction: column; gap: 6px; margin: 1rem 0; }
+    .layer {
+      padding: .6rem 1rem;
+      border-radius: var(--radius);
+      font-size: .88rem;
+      display: flex;
+      align-items: center;
+      gap: .8rem;
+    }
+    .layer-label { font-weight: 600; min-width: 160px; }
+    .layer-desc  { color: var(--muted); font-size: .83rem; }
+    .l1 { background: rgba(88,166,255,.15); border-left: 3px solid #58a6ff; }
+    .l2 { background: rgba(63,185,80,.12); border-left: 3px solid #3fb950; }
+    .l3 { background: rgba(210,166,121,.12); border-left: 3px solid #d2a679; }
+    .l4 { background: rgba(248,81,73,.12); border-left: 3px solid #f85149; }
+    .l5 { background: rgba(188,140,232,.12); border-left: 3px solid #bc8ce8; }
+
+    /* ── Inline anchor ids ────────────────────────────────────────────── */
+    .anchor { display: block; position: relative; top: -70px; visibility: hidden; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">QNX Vehicle ResMgr</div>
+    <div class="subtitle">QNX Neutrino · Android AAOS · CAN · VHAL · JNI · TCP Bridge</div>
+  </div>
+</header>
+
+<!-- ── Tab Navigation ── -->
+<nav class="tab-nav" role="tablist">
+  <button class="tab-btn active" onclick="showTab('overview')"    >Overview</button>
+  <button class="tab-btn"        onclick="showTab('concepts')"    >Concepts &amp; Patterns</button>
+  <button class="tab-btn"        onclick="showTab('files')"       >File Reference</button>
+  <button class="tab-btn"        onclick="showTab('autostack')"   >Automotive Stack</button>
+  <button class="tab-btn"        onclick="showTab('hwalt')"       >HW Alternatives</button>
+  <button class="tab-btn"        onclick="showTab('soccompare')"  >SoC Comparison</button>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 1 — OVERVIEW
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-overview" class="tab-content active">
+
+  <h1>QNX Vehicle Resource Manager</h1>
+  <p>
+    A full-stack embedded demo that connects a <strong>QNX Neutrino RTOS resource manager</strong>
+    (the vehicle ECU side) to an <strong>Android Automotive OS VHAL bridge</strong> (the IVI head-unit
+    side) over a TCP socket. It simulates CAN bus vehicle data — speed, gear, oil temperature, door
+    lock — and exposes them both as UNIX-style device files on QNX and as live VHAL properties on
+    Android.
+  </p>
+
+  <h2>Architecture</h2>
+  <div class="arch-box">
+┌──────────────────────────────────────────────────────────────────────┐
+│  QNX Neutrino RTOS  (vehicle_resmgrd process)                        │
+│                                                                      │
+│   CAN simulator  ──► can_sim_tick()  every 100 ms                   │
+│         │                                                            │
+│         ▼                                                            │
+│   vehicle_resmgr.c                                                   │
+│   ├─ /dev/vehicle/speed      ← cat returns "72.00 km/h"             │
+│   ├─ /dev/vehicle/gear       ← cat returns "DRIVE"                  │
+│   ├─ /dev/vehicle/oil_temp   ← cat returns "87.5 C"                 │
+│   └─ /dev/vehicle/door_lock  ← cat returns "LOCKED"                 │
+│                     │                                                │
+│              vehicle_bridge.c                                        │
+│              TCP client → 10.0.2.2:9090                              │
+└─────────────────────────────────────────────────────────────────────-┘
+                       │ VehicleMessage (20-byte packed struct)
+                       │ TCP SOCK_STREAM  port 9090
+┌──────────────────────────────────────────────────────────────────────┐
+│  Android AAOS (emulator / QEMU guest)                                │
+│                                                                      │
+│   vhal_bridge.cpp  — NDK  TCP server (accept + recv loop)           │
+│         │                                                            │
+│         │ JNI callbacks                                              │
+│         ▼                                                            │
+│   VhalBridgeService.java  — Android Service                          │
+│   onFloatProperty / onIntProperty / onBoolProperty                   │
+│         │                                                            │
+│         ▼                                                            │
+│   VhalStore.java  — ConcurrentHashMap property cache                 │
+│         │                                                            │
+│         ▼ (real AAOS build)                                          │
+│   CarPropertyManager.set*Property()                                  │
+└──────────────────────────────────────────────────────────────────────┘
+  </div>
+
+  <h2>What each layer does</h2>
+  <div class="layer-stack">
+    <div class="layer l1"><span class="layer-label">CAN Simulator</span><span class="layer-desc">Generates realistic vehicle telemetry on a 100 ms timer. Replaces a real CAN transceiver + socketCAN read() on hardware.</span></div>
+    <div class="layer l2"><span class="layer-label">Resource Manager</span><span class="layer-desc">Registers /dev/vehicle/* device nodes with the QNX Pathname Space. Responds to POSIX read() calls from any process using QNX IPC (MsgReceive).</span></div>
+    <div class="layer l3"><span class="layer-label">Vehicle Bridge</span><span class="layer-desc">TCP client that serialises VehicleMessage structs and pushes them to the Android emulator. Handles reconnect automatically.</span></div>
+    <div class="layer l4"><span class="layer-label">NDK Bridge (C++)</span><span class="layer-desc">TCP server inside Android. Deserialises structs and calls back into Java via JNI to keep Android state in sync.</span></div>
+    <div class="layer l5"><span class="layer-label">VHAL Bridge Service</span><span class="layer-desc">Android Service that receives JNI callbacks and stores values in VhalStore. In a real AAOS build, calls CarPropertyManager instead.</span></div>
+  </div>
+
+  <h2>Quick start</h2>
+  <pre><code># ── QNX side (needs QNX SDP 8.0) ──────────────────────────────────────
+source ~/qnx800/qnxsdp-env.sh
+make
+scp vehicle_resmgrd qnxuser@&lt;target-ip&gt;:/tmp/
+ssh qnxuser@&lt;target-ip&gt; "/tmp/vehicle_resmgrd &"
+ssh qnxuser@&lt;target-ip&gt; "cat /dev/vehicle/speed"
+
+# ── Linux host (no QNX license) ───────────────────────────────────────
+make HOST=1
+./vehicle_resmgrd   # uses Linux socket stubs
+
+# ── Android side ──────────────────────────────────────────────────────
+# Build android-vhal-bridge with Android NDK r26+
+# Install as system app on AAOS emulator
+# adb shell am startservice com.adarsh.vhal/.VhalBridgeService</code></pre>
+
+  <h2>Repository layout</h2>
+  <table>
+    <tr><th>Path</th><th>Language</th><th>Purpose</th></tr>
+    <tr><td><code>src/vehicle_resmgr.c</code></td><td><span class="badge badge-c">C</span></td><td>QNX resource manager main — dispatch loop + device registration</td></tr>
+    <tr><td><code>src/can_simulator.c/h</code></td><td><span class="badge badge-c">C</span></td><td>Software CAN frame generator — replaces real CAN hardware</td></tr>
+    <tr><td><code>src/vehicle_bridge.c/h</code></td><td><span class="badge badge-c">C</span></td><td>TCP client that publishes VehicleMessage to Android</td></tr>
+    <tr><td><code>src/vehicle_props.h</code></td><td><span class="badge badge-h">H</span></td><td>Shared constants: PROP_* IDs, VehicleMessage struct, device paths</td></tr>
+    <tr><td><code>android-vhal-bridge/…/vhal_bridge.cpp</code></td><td><span class="badge badge-cpp">C++</span></td><td>Android NDK TCP listener + JNI glue</td></tr>
+    <tr><td><code>android-vhal-bridge/…/VhalBridgeService.java</code></td><td><span class="badge badge-java">Java</span></td><td>Android Service — receives JNI callbacks, writes to VhalStore</td></tr>
+    <tr><td><code>android-vhal-bridge/…/VhalStore.java</code></td><td><span class="badge badge-java">Java</span></td><td>Thread-safe in-memory property cache (simulates VHAL IPC)</td></tr>
+    <tr><td><code>tests/test_can_sim.c</code></td><td><span class="badge badge-c">C</span></td><td>Unit tests — compile and run on Linux CI, no QNX required</td></tr>
+    <tr><td><code>Makefile</code></td><td><span class="badge badge-mk">Makefile</span></td><td>Dual-target: QNX cross-compile via qcc + Linux host stub build</td></tr>
+    <tr><td><code>.github/workflows/ci.yml</code></td><td>YAML</td><td>GitHub Actions: host build, unit tests, cppcheck static analysis</td></tr>
+  </table>
+
+  <h2>Data flow — step by step</h2>
+  <ol>
+    <li><code>main()</code> calls <code>can_sim_init()</code> — sets initial vehicle state (speed=0, gear=PARK, oil=20°C, door=LOCKED).</li>
+    <li><code>can_tick_thread</code> calls <code>can_sim_tick()</code> every 100 ms and gets back a <code>VehicleMessage</code> struct plus the changed property ID.</li>
+    <li>If the property changed, <code>bridge_send()</code> serialises the struct over TCP to <code>10.0.2.2:9090</code>.</li>
+    <li>On the Android side, <code>bridge_thread</code> (inside <code>vhal_bridge.cpp</code>) calls <code>recv()</code> for exactly 20 bytes, checks <code>magic == 0xCAFEBABE</code>, then dispatches to the correct JNI callback.</li>
+    <li>The Java service writes to <code>VhalStore</code>. In a real AAOS build it calls <code>CarPropertyManager.set*()</code>.</li>
+    <li>Meanwhile, any process on QNX that opens <code>/dev/vehicle/speed</code> gets a formatted ASCII string from the resmgr <code>io_read</code> handler — no separate IPC needed.</li>
+  </ol>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 2 — CONCEPTS & PATTERNS
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-concepts" class="tab-content">
+
+  <h1>Concepts &amp; Patterns</h1>
+  <p>This project is a compact demonstration of five distinct systems-programming disciplines stitched together. Here is a reference you can return to for any future project in this domain.</p>
+
+  <!-- 1 ─────────────────────────────────────────────────────────────── -->
+  <h2>1. QNX Resource Manager Pattern</h2>
+  <p>
+    A <strong>resource manager</strong> is a user-space process that registers a pathname (e.g. <code>/dev/vehicle/speed</code>)
+    with the QNX Pathname Space and then handles POSIX file calls (<code>open</code>, <code>read</code>, <code>write</code>,
+    <code>close</code>) from other processes via QNX message passing.
+  </p>
+  <p>It is the QNX equivalent of a Linux kernel character device driver — but it runs entirely in user space, is independently restartable, and cannot crash the kernel.</p>
+
+  <div class="callout">
+    <strong>Key insight:</strong> On QNX every I/O call becomes an IPC message. The kernel routes
+    <code>read("/dev/vehicle/speed")</code> to whichever process registered that path.
+    <code>MsgReceive</code> ↔ <code>MsgReply</code> is the fundamental primitive.
+  </div>
+
+  <h3>The dispatch loop</h3>
+  <pre><code>dispatch_t *dpp = dispatch_create();      // create message channel
+resmgr_attach(dpp, &amp;rattr, path, ...);   // publish path to namespace
+dispatch_context_t *ctp = dispatch_context_alloc(dpp);
+
+while (1) {
+    ctp = dispatch_block(ctp);            // blocks on MsgReceive
+    dispatch_handler(ctp);                // calls the registered io_funcs
+}</code></pre>
+
+  <h3>io_read handler contract</h3>
+  <pre><code>static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
+    if (ocb->offset > 0) return _RESMGR_NPARTS(0);  // EOF on 2nd read
+    SETIOV(ctp->iov, buf, len);                       // set reply buffer
+    ocb->offset += len;
+    return _RESMGR_NPARTS(1);                         // 1 iov part to send
+}</code></pre>
+  <p>
+    <code>RESMGR_OCB_T</code> = Open Control Block — one per <code>open()</code> call.
+    <code>ocb-&gt;offset</code> tracks how many bytes have been sent so sequential reads work correctly.
+  </p>
+
+  <h3>VehicleAttr — extending iofunc_attr_t</h3>
+  <pre><code>typedef struct {
+    iofunc_attr_t attr;     // MUST be first member — QNX casts VehicleAttr* to iofunc_attr_t*
+    uint32_t      prop_id;  // which vehicle property this node serves
+    char          path[64];
+} VehicleAttr;</code></pre>
+  <p>This is the <strong>struct inheritance idiom in C</strong>: by placing the base struct first, a pointer to <code>VehicleAttr</code> is safely cast to <code>iofunc_attr_t *</code> by the QNX resmgr library.</p>
+
+  <!-- 2 ─────────────────────────────────────────────────────────────── -->
+  <h2>2. CAN Bus Simulation Pattern</h2>
+  <p>
+    CAN (Controller Area Network) is the dominant in-vehicle serial bus. ECUs broadcast fixed-size frames (8 bytes data + 11-bit or 29-bit message ID) at rates from 10 Hz to 1 kHz. The QNX kernel exposes a physical CAN controller as <code>/dev/can0</code>; you read frames with <code>read(fd, &amp;frame, sizeof(frame))</code>.
+  </p>
+  <p>
+    This project replaces the hardware with a <strong>state-machine simulator</strong> driven by a monotonic tick counter. The pattern is:
+  </p>
+  <pre><code>// Real hardware:
+fd = open("/dev/can0", O_RDWR);
+read(fd, &amp;frame, sizeof(struct can_frame));  // blocks until frame arrives
+
+// Simulator:
+uint32_t can_sim_tick(VehicleMessage *out) {
+    static int tick = 0; tick++;
+    switch ((tick / 10) % 4) {  // rotate through 4 properties
+    case 0: /* update speed  */ return PROP_VEHICLE_SPEED;
+    case 1: /* update gear   */ return PROP_GEAR_SELECTION;
+    ...
+    }
+}</code></pre>
+  <div class="callout green">
+    <strong>Pattern — Software CAN simulation:</strong> Divide tick counter by the number of ticks per update period, then modulo by the number of properties to get a round-robin property update loop that is deterministic and testable.
+  </div>
+
+  <h3>Monotonic timestamp</h3>
+  <pre><code>static int64_t monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &amp;ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}</code></pre>
+  <p><code>CLOCK_MONOTONIC</code> never jumps backwards (unlike wall clock). Always use it for delta timing in embedded code.</p>
+
+  <!-- 3 ─────────────────────────────────────────────────────────────── -->
+  <h2>3. Binary TCP Protocol Pattern</h2>
+  <p>
+    Instead of JSON or text, the bridge sends a <strong>packed C struct</strong> directly over a TCP stream.
+    This is common in embedded/automotive middleware because it is zero-copy and has predictable latency.
+  </p>
+  <pre><code>typedef struct __attribute__((packed)) {
+    uint32_t   magic;        // 0xCAFEBABE — sanity / frame guard
+    uint32_t   prop_id;      // which property
+    PropValue  value;        // union: float / int32 / uint8
+    int64_t    timestamp_ms; // QNX monotonic ms
+} VehicleMessage;            // total: 4+4+4+8 = 20 bytes (no padding)</code></pre>
+
+  <div class="callout warn">
+    <strong>Endianness note:</strong> Both sides must be the same endianness for this to work correctly without byte-swapping. In production, use <code>htonl/ntohl</code> or define an explicit wire format.
+  </div>
+
+  <h3>Sender (QNX)</h3>
+  <pre><code>send(s_sockfd, msg, sizeof(*msg), MSG_NOSIGNAL);
+// MSG_NOSIGNAL: don't raise SIGPIPE if the receiver closed — return EPIPE instead</code></pre>
+
+  <h3>Receiver (Android NDK)</h3>
+  <pre><code>recv(client, &amp;msg, sizeof(msg), MSG_WAITALL);
+// MSG_WAITALL: block until ALL sizeof(msg) bytes arrive (not a short read)</code></pre>
+
+  <h3>Reconnect pattern</h3>
+  <pre><code>int bridge_send(const VehicleMessage *msg) {
+    if (s_sockfd &lt; 0) {
+        if (bridge_connect() &lt; 0) return -1;  // best-effort
+    }
+    ssize_t n = send(s_sockfd, msg, sizeof(*msg), MSG_NOSIGNAL);
+    if (n != sizeof(*msg)) {
+        close(s_sockfd); s_sockfd = -1;   // mark disconnected
+        return -1;
+    }
+    return 0;
+}</code></pre>
+  <p>The function keeps a file-descriptor as module-level state (<code>static int s_sockfd = -1</code>). <code>-1</code> is the sentinel for "not connected." Each send attempt auto-reconnects.</p>
+
+  <!-- 4 ─────────────────────────────────────────────────────────────── -->
+  <h2>4. JNI Bidirectional Bridge Pattern</h2>
+  <p>
+    <strong>JNI (Java Native Interface)</strong> is the Android mechanism that lets C/C++ code call Java methods and vice versa.
+    The pattern used here is: Java calls a native method to start a C thread, and that C thread later calls Java methods (callbacks) via stored method IDs.
+  </p>
+
+  <h3>Step 1 — Java declares the native method</h3>
+  <pre><code>private native void startBridge();  // implemented in vhal_bridge.cpp</code></pre>
+
+  <h3>Step 2 — JNI_OnLoad captures the JavaVM</h3>
+  <pre><code>JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
+    s_jvm = vm;          // save JavaVM* for later use on background threads
+    return JNI_VERSION_1_6;
+}</code></pre>
+
+  <h3>Step 3 — startBridge resolves method IDs and spawns thread</h3>
+  <pre><code>s_callback = env->NewGlobalRef(thiz);              // keep Java object alive
+jclass cls = env->GetObjectClass(thiz);
+s_onPropF  = env->GetMethodID(cls, "onFloatProperty", "(IF)V");  // JNI signature
+s_onPropI  = env->GetMethodID(cls, "onIntProperty",   "(II)V");
+s_onPropB  = env->GetMethodID(cls, "onBoolProperty",  "(IZ)V");
+pthread_create(&amp;tid, nullptr, bridge_thread, nullptr);</code></pre>
+
+  <h3>Step 4 — Background thread attaches to JVM and calls back</h3>
+  <pre><code>JNIEnv *env = nullptr;
+s_jvm->AttachCurrentThread(&amp;env, nullptr);  // required for non-Java threads
+// ... receive data ...
+env->CallVoidMethod(s_callback, s_onPropF, (jint)propId, (jfloat)value);
+s_jvm->DetachCurrentThread();               // clean up on exit</code></pre>
+
+  <div class="callout">
+    <strong>JNI type signatures:</strong> <code>"(IF)V"</code> = takes int, float, returns void.
+    <code>I</code>=int, <code>F</code>=float, <code>Z</code>=boolean, <code>V</code>=void.
+  </div>
+
+  <!-- 5 ─────────────────────────────────────────────────────────────── -->
+  <h2>5. Dual-Target Build Pattern (Makefile)</h2>
+  <p>
+    A single codebase must build for two targets: the actual QNX cross-compiler (<code>qcc</code>) and a Linux host GCC build for CI. The pattern uses a <code>HOST</code> variable:
+  </p>
+  <pre><code>ifndef HOST
+  CC     := qcc -Vgcc_ntox86_64   # QNX cross-compiler
+  CFLAGS := -D_QNX_SOURCE ...
+else
+  CC     := gcc
+  CFLAGS := -DHOST_BUILD -I./qnx_stubs ...  # mock QNX headers
+endif</code></pre>
+  <p>
+    <code>qnx_stubs/</code> contains header shims (<code>sys/iofunc.h</code>, <code>sys/dispatch.h</code>) that define the QNX types
+    as no-ops so the code compiles on Linux for unit-testing the pure logic (CAN simulator, bridge socket) without a QNX license.
+  </p>
+
+  <!-- 6 ─────────────────────────────────────────────────────────────── -->
+  <h2>6. Singleton + ConcurrentHashMap Pattern (VhalStore)</h2>
+  <pre><code>private static final VhalStore INSTANCE = new VhalStore();
+public static VhalStore getInstance() { return INSTANCE; }
+
+private final ConcurrentHashMap&lt;Integer, Object&gt; mProps = new ConcurrentHashMap&lt;&gt;();</code></pre>
+  <p>
+    <code>ConcurrentHashMap</code> provides lock-free reads and fine-grained locking on writes — safe for concurrent access from the native bridge thread (writing) and any Android UI thread (reading).
+    The key is the <code>int</code> property ID; the value is boxed as <code>Object</code> to hold any of <code>Float</code>, <code>Integer</code>, or <code>Boolean</code>.
+  </p>
+  <pre><code>// Read with type check and default:
+public float getFloat(int propId, float def) {
+    Object v = mProps.get(propId);
+    return v instanceof Float ? (float)v : def;
+}</code></pre>
+
+  <!-- 7 ─────────────────────────────────────────────────────────────── -->
+  <h2>7. Minimal Unit Test Framework (C, no external lib)</h2>
+  <p>Rather than linking gtest or Unity, the test file defines its own three-macro framework:</p>
+  <pre><code>#define TEST(name)   printf("  %-45s", name)
+#define PASS()       do { printf("PASS\n"); s_pass++; } while(0)
+#define FAIL(msg)    do { printf("FAIL — %s\n", msg); s_fail++; } while(0)
+#define ASSERT_EQ(a,b,msg) do { if((a)==(b)) PASS(); else FAIL(msg); } while(0)
+#define ASSERT_GT(a,b,msg) do { if((a)> (b)) PASS(); else FAIL(msg); } while(0)</code></pre>
+  <p>The <code>do { … } while(0)</code> idiom makes macros safe inside <code>if</code> statements without braces. The test runner exits with <code>EXIT_FAILURE</code> if any test failed, enabling CI to catch regressions.</p>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 3 — FILE REFERENCE
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-files" class="tab-content">
+
+  <h1>File Reference</h1>
+  <p>Every file documented to the level of types, constants, global variables, function signatures, loops, and notable idioms.</p>
+
+  <!-- vehicle_props.h ─────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-h">H</span>
+      src/vehicle_props.h
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Shared definitions: property IDs, structs, device paths</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">constants</span> Property IDs</h3>
+      <table>
+        <tr><th>Macro</th><th>Value</th><th>Type</th><th>Meaning</th></tr>
+        <tr><td><code>PROP_VEHICLE_SPEED</code></td><td><code>0x11600207</code></td><td>float km/h</td><td>Matches Android VHAL <code>PERF_VEHICLE_SPEED</code></td></tr>
+        <tr><td><code>PROP_GEAR_SELECTION</code></td><td><code>0x11400400</code></td><td>int32</td><td>Matches Android VHAL <code>GEAR_SELECTION</code></td></tr>
+        <tr><td><code>PROP_ENGINE_OIL_TEMP</code></td><td><code>0x11600303</code></td><td>float °C</td><td>Matches Android VHAL <code>ENGINE_OIL_TEMP</code></td></tr>
+        <tr><td><code>PROP_DOOR_LOCK</code></td><td><code>0x11200102</code></td><td>bool (uint8)</td><td>Matches Android VHAL <code>DOOR_LOCK</code></td></tr>
+      </table>
+
+      <h3><span class="pill">enum</span> VehicleGear</h3>
+      <pre><code>typedef enum {
+    GEAR_NEUTRAL  = 0,
+    GEAR_REVERSE  = 1,
+    GEAR_PARK     = 2,
+    GEAR_DRIVE    = 4,   // note: 3 is skipped — matches VHAL VehicleGear enum
+} VehicleGear;</code></pre>
+
+      <h3><span class="pill">union</span> PropValue</h3>
+      <pre><code>typedef union {
+    float   f;   // PROP_VEHICLE_SPEED, PROP_ENGINE_OIL_TEMP
+    int32_t i;   // PROP_GEAR_SELECTION
+    uint8_t b;   // PROP_DOOR_LOCK
+} PropValue;</code></pre>
+      <p>A union saves memory by overlapping the storage of all three types. Only one member is valid at a time; <code>prop_id</code> tells you which.</p>
+
+      <h3><span class="pill">struct</span> VehicleMessage</h3>
+      <pre><code>typedef struct __attribute__((packed)) {
+    uint32_t   magic;        // always BRIDGE_MAGIC (0xCAFEBABE)
+    uint32_t   prop_id;      // which PROP_* constant
+    PropValue  value;        // 4 bytes (largest member of union)
+    int64_t    timestamp_ms; // monotonic ms from QNX boot
+} VehicleMessage;            // 4+4+4+8 = 20 bytes, no padding</code></pre>
+      <p><code>__attribute__((packed))</code> tells GCC not to insert alignment padding — the struct size must match exactly on both QNX (sender) and Android NDK (receiver).</p>
+
+      <h3><span class="pill">constants</span> Device paths &amp; network</h3>
+      <table>
+        <tr><th>Macro</th><th>Value</th><th>Use</th></tr>
+        <tr><td><code>DEV_SPEED</code></td><td><code>"/dev/vehicle/speed"</code></td><td>QNX pathname for resmgr registration</td></tr>
+        <tr><td><code>DEV_GEAR</code></td><td><code>"/dev/vehicle/gear"</code></td><td></td></tr>
+        <tr><td><code>DEV_OIL_TEMP</code></td><td><code>"/dev/vehicle/oil_temp"</code></td><td></td></tr>
+        <tr><td><code>DEV_DOOR_LOCK</code></td><td><code>"/dev/vehicle/door_lock"</code></td><td></td></tr>
+        <tr><td><code>BRIDGE_MAGIC</code></td><td><code>0xCAFEBABE</code></td><td>Wire protocol framing guard</td></tr>
+        <tr><td><code>BRIDGE_HOST</code></td><td><code>"10.0.2.2"</code></td><td>QEMU host-side alias (Android emulator sees host at this IP)</td></tr>
+        <tr><td><code>BRIDGE_PORT</code></td><td><code>9090</code></td><td>TCP port</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- can_simulator.h ─────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-h">H</span>
+      src/can_simulator.h
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Public API for the CAN simulator</span>
+    </div>
+    <div class="file-card-body">
+      <h3><span class="pill">functions</span> Public API</h3>
+      <table>
+        <tr><th>Signature</th><th>Description</th></tr>
+        <tr><td><code>void can_sim_init(void)</code></td><td>Reset all vehicle state to cold-start values</td></tr>
+        <tr><td><code>uint32_t can_sim_tick(VehicleMessage *out)</code></td><td>Advance simulation one step. Fills <code>*out</code>. Returns changed <code>PROP_*</code> or <code>0</code></td></tr>
+        <tr><td><code>float can_sim_get_speed(void)</code></td><td>Current speed in km/h</td></tr>
+        <tr><td><code>int32_t can_sim_get_gear(void)</code></td><td>Current gear as <code>VehicleGear</code></td></tr>
+        <tr><td><code>float can_sim_get_oil_temp(void)</code></td><td>Current oil temperature in °C</td></tr>
+        <tr><td><code>uint8_t can_sim_get_door_lock(void)</code></td><td>1 = locked, 0 = unlocked</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- can_simulator.c ─────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-c">C</span>
+      src/can_simulator.c
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Software CAN frame generator</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">globals</span> Module-level state (static — not visible outside this file)</h3>
+      <table>
+        <tr><th>Variable</th><th>Type</th><th>Initial</th><th>Meaning</th></tr>
+        <tr><td><code>s_speed_kmh</code></td><td><code>float</code></td><td>0.0</td><td>Current simulated vehicle speed</td></tr>
+        <tr><td><code>s_gear</code></td><td><code>int32_t</code></td><td>GEAR_NEUTRAL</td><td>Current gear position</td></tr>
+        <tr><td><code>s_oil_temp_c</code></td><td><code>float</code></td><td>20.0</td><td>Engine oil temperature (cold start)</td></tr>
+        <tr><td><code>s_door_locked</code></td><td><code>uint8_t</code></td><td>1</td><td>Door lock state (1=locked)</td></tr>
+      </table>
+
+      <h3><span class="pill">function</span> monotonic_ms()</h3>
+      <pre><code>static int64_t monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &amp;ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}</code></pre>
+      <p>Private helper. <code>CLOCK_MONOTONIC</code> is the only clock safe for elapsed-time measurements — it never jumps due to NTP or DST.</p>
+
+      <h3><span class="pill">function</span> can_sim_tick()</h3>
+      <p>Contains the main simulation <strong>loop / switch</strong>:</p>
+      <pre><code>uint32_t can_sim_tick(VehicleMessage *out) {
+    static int tick = 0;   // persists across calls (function-local static)
+    tick++;
+
+    out->magic        = BRIDGE_MAGIC;
+    out->timestamp_ms = monotonic_ms();
+
+    switch ((tick / 10) % 4) {   // rotate every 10 ticks, 4 phases
+
+    case 0:  // SPEED — ramps 0→120, wraps back to 0
+        s_speed_kmh += 2.0f;
+        if (s_speed_kmh > 120.0f) s_speed_kmh = 0.0f;
+        s_gear = (s_speed_kmh > 5.0f) ? GEAR_DRIVE : GEAR_PARK;
+        out->prop_id = PROP_VEHICLE_SPEED;
+        out->value.f = s_speed_kmh;
+        return PROP_VEHICLE_SPEED;
+
+    case 1:  // GEAR — derived from speed
+        out->prop_id = PROP_GEAR_SELECTION;
+        out->value.i = s_gear;
+        return PROP_GEAR_SELECTION;
+
+    case 2:  // OIL TEMP — warms up to 90 °C, clamps
+        s_oil_temp_c += 0.5f;
+        if (s_oil_temp_c > 90.0f) s_oil_temp_c = 90.0f;
+        out->prop_id = PROP_ENGINE_OIL_TEMP;
+        out->value.f = s_oil_temp_c;
+        return PROP_ENGINE_OIL_TEMP;
+
+    case 3:  // DOOR LOCK — toggles every 40 ticks
+        if (tick % 40 == 0) s_door_locked ^= 1;   // XOR toggle
+        out->prop_id = PROP_DOOR_LOCK;
+        out->value.b = s_door_locked;
+        return PROP_DOOR_LOCK;
+
+    default: return 0;
+    }
+}</code></pre>
+      <p>Note the <code>static int tick = 0</code> inside the function — this is a <em>function-local static</em>, initialised once and persistent across calls, without polluting file scope.</p>
+    </div>
+  </div>
+
+  <!-- vehicle_bridge.h / .c ──────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-h">H</span>
+      <span class="badge badge-c" style="margin-left:.3rem">C</span>
+      src/vehicle_bridge.h &amp; vehicle_bridge.c
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— TCP client publishing to Android</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">global</span> Module-level state</h3>
+      <table>
+        <tr><th>Variable</th><th>Type</th><th>Meaning</th></tr>
+        <tr><td><code>s_sockfd</code></td><td><code>static int</code></td><td>TCP socket fd. <code>-1</code> = disconnected. Sentinel pattern.</td></tr>
+      </table>
+
+      <h3><span class="pill">functions</span></h3>
+      <table>
+        <tr><th>Signature</th><th>Returns</th><th>Behaviour</th></tr>
+        <tr><td><code>int bridge_connect(void)</code></td><td>0 = ok, -1 = fail</td><td>Creates SOCK_STREAM socket, connects to BRIDGE_HOST:BRIDGE_PORT. Closes fd on failure.</td></tr>
+        <tr><td><code>int bridge_send(const VehicleMessage *msg)</code></td><td>0 = ok, -1 = fail</td><td>Auto-reconnects if fd is -1. Sends exactly sizeof(*msg) bytes. Marks disconnected on error.</td></tr>
+        <tr><td><code>void bridge_disconnect(void)</code></td><td>void</td><td>Closes fd and resets to -1.</td></tr>
+      </table>
+
+      <h3><span class="pill">notable</span> MSG_NOSIGNAL flag</h3>
+      <pre><code>send(s_sockfd, msg, sizeof(*msg), MSG_NOSIGNAL);</code></pre>
+      <p>Without this flag, writing to a broken TCP connection raises <code>SIGPIPE</code>, which by default kills the process. <code>MSG_NOSIGNAL</code> converts that to a return of <code>-1</code> with <code>errno == EPIPE</code> so the caller can handle it gracefully.</p>
+    </div>
+  </div>
+
+  <!-- vehicle_resmgr.c ────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-c">C</span>
+      src/vehicle_resmgr.c
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— QNX resource manager main</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">types</span></h3>
+      <table>
+        <tr><th>Type</th><th>Members</th><th>Purpose</th></tr>
+        <tr><td><code>VehicleAttr</code></td><td><code>iofunc_attr_t attr</code> (first!), <code>uint32_t prop_id</code>, <code>char path[64]</code></td><td>Per-device context. Passed as <code>ocb-&gt;attr</code> in callbacks.</td></tr>
+      </table>
+
+      <h3><span class="pill">globals</span></h3>
+      <table>
+        <tr><th>Variable</th><th>Type</th><th>Purpose</th></tr>
+        <tr><td><code>s_devs[4]</code></td><td><code>static VehicleAttr</code></td><td>One entry per /dev/vehicle/* node</td></tr>
+        <tr><td><code>s_dpp</code></td><td><code>static dispatch_t *</code></td><td>QNX dispatch handle — shared across registrations</td></tr>
+      </table>
+
+      <h3><span class="pill">function</span> format_prop()</h3>
+      <pre><code>static int format_prop(uint32_t prop_id, char *buf, size_t len) {
+    switch (prop_id) {
+    case PROP_VEHICLE_SPEED:   return snprintf(buf, len, "%.2f km/h\n", can_sim_get_speed());
+    case PROP_GEAR_SELECTION:  /* nested switch on gear value */ ...
+    case PROP_ENGINE_OIL_TEMP: return snprintf(buf, len, "%.1f C\n", can_sim_get_oil_temp());
+    case PROP_DOOR_LOCK:       return snprintf(buf, len, "%s\n", ...);
+    }
+}</code></pre>
+      <p>Uses <code>snprintf</code> (not <code>sprintf</code>) for buffer safety. Returns the number of bytes written (excluding null terminator), matching the POSIX <code>read()</code> convention.</p>
+
+      <h3><span class="pill">function</span> io_read() — the core handler</h3>
+      <pre><code>static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
+    VehicleAttr *attr = (VehicleAttr *)ocb->attr;  // cast base to derived
+    char buf[64];
+
+    if (ocb->offset > 0) return _RESMGR_NPARTS(0); // EOF on re-read
+
+    int len = format_prop(attr->prop_id, buf, sizeof(buf));
+    SETIOV(ctp->iov, buf, len);  // set reply iov (scatter-gather)
+    ocb->offset += len;
+    return _RESMGR_NPARTS(1);    // 1 iov segment in reply
+}</code></pre>
+
+      <h3><span class="pill">function</span> register_device()</h3>
+      <pre><code>static void register_device(dispatch_t *dpp, resmgr_attr_t *rattr,
+                             iofunc_funcs_t *funcs, resmgr_io_funcs_t *io_funcs,
+                             VehicleAttr *dev, const char *path, uint32_t prop_id) {
+    iofunc_attr_init(&amp;dev->attr, S_IFCHR | 0444, NULL, NULL); // char device, read-only
+    dev->prop_id = prop_id;
+    strncpy(dev->path, path, sizeof(dev->path) - 1);
+
+    resmgr_attach(dpp, rattr, path, _FTYPE_ANY, 0, io_funcs, funcs, &amp;dev->attr);
+}</code></pre>
+      <p><code>S_IFCHR | 0444</code> = character device, world-readable. <code>_FTYPE_ANY</code> = accept any open type (regular, block, etc.).</p>
+
+      <h3><span class="pill">thread</span> can_tick_thread()</h3>
+      <pre><code>static void *can_tick_thread(void *arg) {
+    VehicleMessage msg;
+    bridge_connect();   // best-effort; bridge_send retries on failure
+
+    while (1) {                              // infinite producer loop
+        uint32_t changed = can_sim_tick(&amp;msg);
+        if (changed) bridge_send(&amp;msg);
+        usleep(100 * 1000);                  // 100 ms = 10 Hz
+    }
+    return NULL;
+}</code></pre>
+      <p><strong>Pattern: producer thread with sleep-based rate limiting.</strong> <code>usleep(100000)</code> keeps the loop at exactly 10 Hz — matching a real CAN bus update rate for these properties.</p>
+
+      <h3><span class="pill">function</span> main()</h3>
+      <p>Sequence of setup calls:</p>
+      <ol>
+        <li><code>can_sim_init()</code> — reset simulator state</li>
+        <li><code>dispatch_create()</code> — create QNX message channel</li>
+        <li><code>iofunc_func_init()</code> — fill io_funcs with QNX defaults</li>
+        <li>Override <code>io_funcs.read</code> and <code>io_funcs.write</code> with custom handlers</li>
+        <li><code>mkdir("/dev/vehicle", 0755)</code> — ensure directory exists</li>
+        <li><code>register_device()</code> ×4 — publish each /dev/vehicle/* node</li>
+        <li><code>pthread_create(&amp;tick_tid, …, can_tick_thread, …)</code> — start CAN loop</li>
+        <li><code>dispatch_context_alloc()</code> + <code>dispatch_block()</code> loop — enter message receive loop</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- vhal_bridge.cpp ─────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-cpp">C++</span>
+      android-vhal-bridge/src/main/cpp/vhal_bridge.cpp
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Android NDK TCP listener + JNI glue</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">macros</span></h3>
+      <pre><code>#define LOG_TAG "VhalBridge"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)</code></pre>
+      <p>Android NDK logging — output visible in <code>adb logcat</code>. The variadic macro <code>__VA_ARGS__</code> passes all arguments through to <code>__android_log_print</code>.</p>
+
+      <h3><span class="pill">globals</span> JVM state</h3>
+      <table>
+        <tr><th>Variable</th><th>Type</th><th>Purpose</th></tr>
+        <tr><td><code>s_jvm</code></td><td><code>JavaVM *</code></td><td>VM reference saved in JNI_OnLoad for background thread use</td></tr>
+        <tr><td><code>s_callback</code></td><td><code>jobject</code></td><td>Global ref to the VhalBridgeService Java object</td></tr>
+        <tr><td><code>s_onPropF</code></td><td><code>jmethodID</code></td><td>Cached method ID for <code>onFloatProperty(int, float)</code></td></tr>
+        <tr><td><code>s_onPropI</code></td><td><code>jmethodID</code></td><td>Cached method ID for <code>onIntProperty(int, int)</code></td></tr>
+        <tr><td><code>s_onPropB</code></td><td><code>jmethodID</code></td><td>Cached method ID for <code>onBoolProperty(int, boolean)</code></td></tr>
+      </table>
+
+      <h3><span class="pill">thread</span> bridge_thread() — two nested loops</h3>
+      <pre><code>while (true) {                              // outer: accept loop
+    int client = accept(server_fd, ...);
+    LOGI("QNX connected");
+
+    VehicleMessage msg;
+    while (true) {                          // inner: receive loop
+        ssize_t n = recv(client, &amp;msg, sizeof(msg), MSG_WAITALL);
+        if (n != sizeof(msg)) break;        // disconnect → break to outer
+        if (msg.magic != BRIDGE_MAGIC) continue;  // bad frame → skip
+
+        switch (msg.prop_id) {              // dispatch by type
+        case PROP_VEHICLE_SPEED:
+        case PROP_ENGINE_OIL_TEMP:
+            env->CallVoidMethod(s_callback, s_onPropF, ...); break;
+        case PROP_GEAR_SELECTION:
+            env->CallVoidMethod(s_callback, s_onPropI, ...); break;
+        case PROP_DOOR_LOCK:
+            env->CallVoidMethod(s_callback, s_onPropB, ...); break;
+        }
+    }
+    close(client);
+}</code></pre>
+      <p>The outer loop allows reconnection from QNX — if QNX restarts, the Android side automatically accepts the new connection without restarting.</p>
+
+      <h3><span class="pill">JNI</span> JNI_OnLoad and startBridge</h3>
+      <pre><code>// Called automatically by Android when System.loadLibrary("vhal_bridge") runs:
+JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) { s_jvm = vm; return JNI_VERSION_1_6; }
+
+// Called by Java: private native void startBridge();
+JNIEXPORT void JNICALL
+Java_com_adarsh_vhal_VhalBridgeService_startBridge(JNIEnv *env, jobject thiz) {
+    s_callback = env->NewGlobalRef(thiz);   // prevent GC of Java object
+    jclass cls = env->GetObjectClass(thiz);
+    s_onPropF  = env->GetMethodID(cls, "onFloatProperty", "(IF)V");
+    s_onPropI  = env->GetMethodID(cls, "onIntProperty",   "(II)V");
+    s_onPropB  = env->GetMethodID(cls, "onBoolProperty",  "(IZ)V");
+    pthread_t tid;
+    pthread_create(&amp;tid, nullptr, bridge_thread, nullptr);
+    pthread_detach(tid);   // detach: no join needed, thread runs until process exit
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- VhalBridgeService.java ──────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-java">Java</span>
+      …/VhalBridgeService.java
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Android Service — JNI callbacks → VhalStore</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">constants</span> Property IDs (mirrors vehicle_props.h)</h3>
+      <table>
+        <tr><th>Field</th><th>Value</th></tr>
+        <tr><td><code>PROP_VEHICLE_SPEED</code></td><td><code>0x11600207</code></td></tr>
+        <tr><td><code>PROP_GEAR_SELECTION</code></td><td><code>0x11400400</code></td></tr>
+        <tr><td><code>PROP_ENGINE_OIL_TEMP</code></td><td><code>0x11600303</code></td></tr>
+        <tr><td><code>PROP_DOOR_LOCK</code></td><td><code>0x11200102</code></td></tr>
+      </table>
+
+      <h3><span class="pill">static block</span> Library loading</h3>
+      <pre><code>static {
+    System.loadLibrary("vhal_bridge");  // loads libvhal_bridge.so, triggers JNI_OnLoad
+}</code></pre>
+
+      <h3><span class="pill">lifecycle</span> onStartCommand()</h3>
+      <pre><code>public int onStartCommand(Intent intent, int flags, int startId) {
+    startBridge();      // JNI call → spawns C++ thread
+    return START_STICKY; // Android will restart this service if killed
+}</code></pre>
+
+      <h3><span class="pill">callbacks</span> JNI-called methods</h3>
+      <table>
+        <tr><th>Method</th><th>Called for</th><th>Action</th></tr>
+        <tr><td><code>onFloatProperty(int, float)</code></td><td>SPEED, OIL_TEMP</td><td>Logs + writes to VhalStore</td></tr>
+        <tr><td><code>onIntProperty(int, int)</code></td><td>GEAR</td><td>Logs + writes to VhalStore</td></tr>
+        <tr><td><code>onBoolProperty(int, boolean)</code></td><td>DOOR_LOCK</td><td>Logs + writes to VhalStore</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- VhalStore.java ─────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-java">Java</span>
+      …/VhalStore.java
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Thread-safe property cache</span>
+    </div>
+    <div class="file-card-body">
+
+      <h3><span class="pill">fields</span></h3>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+        <tr><td><code>INSTANCE</code></td><td><code>private static final VhalStore</code></td><td>Eager singleton — initialised when class loads, thread-safe by JVM spec</td></tr>
+        <tr><td><code>mProps</code></td><td><code>ConcurrentHashMap&lt;Integer, Object&gt;</code></td><td>Property store. Key = PROP_* int. Value = boxed Float/Integer/Boolean.</td></tr>
+      </table>
+
+      <h3><span class="pill">methods</span></h3>
+      <pre><code>public void putFloat(int propId, float v)   { mProps.put(propId, v); }  // auto-boxes to Float
+public void putInt(int propId, int v)        { mProps.put(propId, v); }  // auto-boxes to Integer
+public void putBool(int propId, boolean v)   { mProps.put(propId, v); }  // auto-boxes to Boolean
+
+public float getFloat(int propId, float def) {
+    Object v = mProps.get(propId);
+    return v instanceof Float ? (float)v : def;  // safe cast with default
+}</code></pre>
+      <p>The <code>instanceof</code> check prevents a <code>ClassCastException</code> if a key is missing or was stored with the wrong type. This is the preferred pattern over unchecked casts.</p>
+    </div>
+  </div>
+
+  <!-- Makefile ────────────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-mk">Makefile</span>
+      Makefile
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Dual-target build: QNX cross-compile or Linux host</span>
+    </div>
+    <div class="file-card-body">
+      <h3><span class="pill">variables</span></h3>
+      <table>
+        <tr><th>Variable</th><th>Default (QNX)</th><th>HOST=1 override</th></tr>
+        <tr><td><code>TARGET</code></td><td><code>vehicle_resmgrd</code></td><td>same</td></tr>
+        <tr><td><code>CC</code></td><td><code>qcc -Vgcc_ntox86_64</code></td><td><code>gcc</code></td></tr>
+        <tr><td><code>CFLAGS</code></td><td><code>-D_QNX_SOURCE</code></td><td><code>-DHOST_BUILD -I./qnx_stubs</code></td></tr>
+        <tr><td><code>LDFLAGS</code></td><td><code>-lm -lsocket</code></td><td><code>-lm -lpthread</code></td></tr>
+        <tr><td><code>OBJS</code></td><td colspan="2">Pattern substitution: <code>$(SRCS:.c=.o)</code></td></tr>
+      </table>
+      <h3><span class="pill">rules</span></h3>
+      <pre><code>all: $(TARGET)              # default goal
+
+$(TARGET): $(OBJS)         # link step
+    $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c                   # pattern rule — compile each .c to .o
+    $(CC) $(CFLAGS) -c -o $@ $&lt;
+
+clean:
+    rm -f $(OBJS) $(TARGET)</code></pre>
+    </div>
+  </div>
+
+  <!-- test_can_sim.c ──────────────────────────────────────────────── -->
+  <div class="file-card">
+    <div class="file-card-header">
+      <span class="badge badge-c">C</span>
+      tests/test_can_sim.c
+      <span style="color:var(--muted);font-weight:400;font-size:.8rem">— Unit tests, no QNX required</span>
+    </div>
+    <div class="file-card-body">
+      <h3><span class="pill">globals</span></h3>
+      <table>
+        <tr><th>Variable</th><th>Type</th><th>Purpose</th></tr>
+        <tr><td><code>s_pass</code></td><td><code>static int</code></td><td>Count of passing tests</td></tr>
+        <tr><td><code>s_fail</code></td><td><code>static int</code></td><td>Count of failing tests</td></tr>
+      </table>
+      <h3><span class="pill">macros</span> Test framework</h3>
+      <table>
+        <tr><th>Macro</th><th>Behaviour</th></tr>
+        <tr><td><code>TEST(name)</code></td><td>Prints test name left-aligned in 45 chars</td></tr>
+        <tr><td><code>PASS()</code></td><td>Prints "PASS", increments <code>s_pass</code></td></tr>
+        <tr><td><code>FAIL(msg)</code></td><td>Prints "FAIL — msg", increments <code>s_fail</code></td></tr>
+        <tr><td><code>ASSERT_EQ(a,b,msg)</code></td><td>Passes if <code>a == b</code></td></tr>
+        <tr><td><code>ASSERT_GT(a,b,msg)</code></td><td>Passes if <code>a &gt; b</code></td></tr>
+        <tr><td><code>ASSERT_NE(a,b,msg)</code></td><td>Passes if <code>a != b</code></td></tr>
+      </table>
+      <h3><span class="pill">test suites</span></h3>
+      <table>
+        <tr><th>Suite</th><th>What it checks</th></tr>
+        <tr><td>Suite 1 — Initial state</td><td>speed=0, gear=PARK, oil=20°C, door=locked</td></tr>
+        <tr><td>Suite 2 — Message framing</td><td>magic==BRIDGE_MAGIC, valid prop_id, timestamp&gt;0</td></tr>
+        <tr><td>Suite 3 — Speed ramp</td><td>Speed increases; gear shifts to DRIVE when speed&gt;5</td></tr>
+        <tr><td>Suite 4 — Oil temp</td><td>Oil temp rises; caps at 90°C</td></tr>
+        <tr><td>Suite 5 — Struct size</td><td><code>sizeof(VehicleMessage) == 20</code> (packed, no padding)</td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 4 — AUTOMOTIVE STACK
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-autostack" class="tab-content">
+
+  <h1>Automotive Stack Explained</h1>
+  <p>This project touches four layers of the automotive software stack. Here is a reference for each layer from hardware up to the application.</p>
+
+  <h2>Layer 0 — CAN Bus (physical / data link)</h2>
+  <p>
+    <strong>Controller Area Network</strong> is a two-wire differential serial bus invented by Bosch in 1983, now mandatory in every road vehicle (ISO 11898).
+    Every node (ECU) broadcasts messages; every node receives every message. There is no master/slave — the bus is multi-master with priority arbitration.
+  </p>
+  <table>
+    <tr><th>Property</th><th>Classic CAN (2.0)</th><th>CAN FD</th></tr>
+    <tr><td>Bit rate</td><td>up to 1 Mbit/s</td><td>up to 8 Mbit/s (data phase)</td></tr>
+    <tr><td>Data bytes</td><td>0–8 bytes</td><td>0–64 bytes</td></tr>
+    <tr><td>Message ID</td><td>11-bit (2.0A) or 29-bit (2.0B)</td><td>same, extended</td></tr>
+    <tr><td>Error detection</td><td>CRC + ACK + bit stuffing</td><td>same + SECDED in FD</td></tr>
+  </table>
+
+  <h3>Typical CAN frame</h3>
+  <pre><code>struct can_frame {
+    canid_t  can_id;    // 11 or 29-bit message ID
+    uint8_t  can_dlc;  // data length code (0–8)
+    uint8_t  data[8];  // payload
+};</code></pre>
+
+  <h3>Common CAN message IDs in a vehicle</h3>
+  <table>
+    <tr><th>ID (hex)</th><th>Signal</th><th>Rate</th></tr>
+    <tr><td><code>0x0C0</code></td><td>Engine speed (RPM)</td><td>10 ms</td></tr>
+    <tr><td><code>0x0D0</code></td><td>Vehicle speed</td><td>10 ms</td></tr>
+    <tr><td><code>0x100</code></td><td>Gear position</td><td>100 ms</td></tr>
+    <tr><td><code>0x420</code></td><td>Door status</td><td>on-change</td></tr>
+    <tr><td><code>0x640</code></td><td>Oil temperature</td><td>1000 ms</td></tr>
+  </table>
+
+  <h3>socketCAN — Linux / QNX kernel interface</h3>
+  <pre><code>// Real hardware — read a raw CAN frame:
+int fd = open("/dev/can0", O_RDWR);    // QNX
+// or: socket(PF_CAN, SOCK_RAW, CAN_RAW);  // Linux socketCAN
+
+struct can_frame frame;
+read(fd, &amp;frame, sizeof(frame));
+uint16_t speed_raw = (frame.data[0] &lt;&lt; 8) | frame.data[1];
+float speed_kmh = speed_raw * 0.01f;   // decode per DBC file</code></pre>
+  <p>A <strong>DBC file</strong> (Database CAN) is a text file that maps CAN IDs + bit positions to engineering-unit signal names. Tools like Vector CANdb++, cantools (Python), and kvaser.com parse DBC files.</p>
+
+  <!-- ─────────────────────────────────────────────────────────────── -->
+  <h2>Layer 1 — QNX Neutrino RTOS</h2>
+  <p>
+    QNX Neutrino is a <strong>microkernel RTOS</strong>. The kernel only does scheduling, IPC, and interrupt dispatch.
+    All drivers, filesystems, and network stacks run as user-space processes communicating via <strong>message passing</strong>. A crashed driver is simply restarted — the kernel does not crash.
+  </p>
+
+  <h3>Key QNX concepts</h3>
+  <table>
+    <tr><th>Concept</th><th>Meaning</th></tr>
+    <tr><td>Pathname Space</td><td>Global namespace where both file paths and service endpoints live. <code>resmgr_attach()</code> inserts a path into it.</td></tr>
+    <tr><td>MsgSend / MsgReceive / MsgReply</td><td>The kernel IPC primitives. Every POSIX call to a device becomes a MsgSend to the owning process.</td></tr>
+    <tr><td>Pulse</td><td>Small fixed-size IPC message for lightweight signals (e.g. timer expiry).</td></tr>
+    <tr><td>dispatch_t</td><td>Multiplexes a single MsgReceive channel across multiple resource manager paths.</td></tr>
+    <tr><td>OCB (Open Control Block)</td><td>Created per <code>open()</code> call, destroyed on <code>close()</code>. Carries file position, flags, per-client state.</td></tr>
+    <tr><td>iofunc_attr_t</td><td>Per-device attributes: mode, owner, size, timestamps. The QNX equivalent of Linux <code>struct inode</code>.</td></tr>
+  </table>
+
+  <h3>QNX in the automotive stack</h3>
+  <p>QNX powers the <strong>instrument cluster, ADAS domain controller, and digital cockpit</strong> in vehicles from BMW, Ford, GM, Volkswagen, and others. It provides hard real-time guarantees (microsecond-precision scheduling) and functional safety certification up to <strong>ISO 26262 ASIL D</strong>.</p>
+
+  <h3>QNX Hypervisor (QNX SDP 8 / Qualcomm SA8155/SA8295)</h3>
+  <p>
+    On multi-core SoCs like the <strong>Qualcomm SA8155P</strong> (Snapdragon Automotive), QNX runs as a Type-1 hypervisor partitioning CPUs between:
+  </p>
+  <ul>
+    <li><strong>QNX guest VM</strong> — real-time cluster / ADAS / safety</li>
+    <li><strong>Android AAOS guest VM</strong> — IVI head unit, maps, media</li>
+  </ul>
+  <p>The two VMs communicate via <strong>virtio channels</strong> or <strong>shared memory</strong> (qvm_vdev_shmem). This project uses a TCP socket as the equivalent for emulator development.</p>
+
+  <!-- ─────────────────────────────────────────────────────────────── -->
+  <h2>Layer 2 — Android Automotive OS (AAOS) &amp; VHAL</h2>
+  <p>
+    <strong>Android Automotive OS</strong> is a full Android build customised for in-vehicle infotainment.
+    It adds the <strong>Vehicle Hardware Abstraction Layer (VHAL)</strong> — the interface between the Android car framework and the actual vehicle hardware (ECUs, gateways).
+  </p>
+
+  <div class="arch-box">
+Android App (Navigation, Media, Phone)
+         │
+         │ android.car.* API
+         ▼
+CarPropertyManager  (car-lib)
+         │
+         │ Binder IPC
+         ▼
+CarService  (system server process)
+         │
+         │ VHAL IPC (hidl or aidl)
+         ▼
+VHAL Service  (vendor HAL process — replaces with VhalBridgeService here)
+         │
+         │ socket / shared memory / virtio
+         ▼
+QNX Resource Manager / ECU Gateway
+  </div>
+
+  <h3>VHAL Property system</h3>
+  <table>
+    <tr><th>Property</th><th>Android constant</th><th>ID</th><th>Type</th></tr>
+    <tr><td>Vehicle speed</td><td><code>VehicleProperty.PERF_VEHICLE_SPEED</code></td><td><code>0x11600207</code></td><td>FLOAT</td></tr>
+    <tr><td>Gear</td><td><code>VehicleProperty.GEAR_SELECTION</code></td><td><code>0x11400400</code></td><td>INT32</td></tr>
+    <tr><td>Engine oil temp</td><td><code>VehicleProperty.ENGINE_OIL_TEMP</code></td><td><code>0x11600303</code></td><td>FLOAT</td></tr>
+    <tr><td>Door lock</td><td><code>VehicleProperty.DOOR_LOCK</code></td><td><code>0x11200102</code></td><td>BOOLEAN</td></tr>
+  </table>
+
+  <h3>CarPropertyManager (real AAOS usage)</h3>
+  <pre><code>// In a real AAOS system app:
+Car car = Car.createCar(context);
+CarPropertyManager cpm = (CarPropertyManager) car.getCarManager(Car.PROPERTY_SERVICE);
+
+// Read:
+float speed = cpm.getFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0);
+
+// Write (requires android.car.permission.CAR_SPEED):
+cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></pre>
+
+  <h3>VHAL property ID encoding</h3>
+  <pre><code>// ID = (PropertyGroup &lt;&lt; 28) | (DataType &lt;&lt; 16) | (Area &lt;&lt; 8) | (Index)
+// 0x11600207:
+//   0x1  = VehiclePropertyGroup.SYSTEM
+//   0x16 = VehiclePropertyType.FLOAT
+//   0x02 = VehicleArea.GLOBAL
+//   0x07 = property index</code></pre>
+
+  <!-- ─────────────────────────────────────────────────────────────── -->
+  <h2>Layer 3 — Android NDK &amp; JNI</h2>
+  <p>
+    The <strong>Android NDK</strong> lets you write C/C++ code that is compiled to a native shared library (<code>.so</code>) and loaded into an Android process via <code>System.loadLibrary()</code>.
+    <strong>JNI</strong> is the ABI that lets C code call Java and Java call C.
+  </p>
+  <h3>Why NDK for this bridge?</h3>
+  <ul>
+    <li>Java can't do <code>recv(MSG_WAITALL)</code> on a raw socket with zero-copy semantics efficiently.</li>
+    <li>The binary protocol struct must be deserialised exactly — C/C++ handles packed struct layout deterministically.</li>
+    <li>NDK threads can attach to the JVM and call back into Java, enabling a clean producer-consumer pattern.</li>
+  </ul>
+
+  <h3>JNI type signature cheat sheet</h3>
+  <table>
+    <tr><th>Java type</th><th>JNI type</th><th>Signature char</th></tr>
+    <tr><td>int</td><td>jint</td><td>I</td></tr>
+    <tr><td>float</td><td>jfloat</td><td>F</td></tr>
+    <tr><td>boolean</td><td>jboolean</td><td>Z</td></tr>
+    <tr><td>void</td><td>void</td><td>V</td></tr>
+    <tr><td>String</td><td>jstring</td><td>Ljava/lang/String;</td></tr>
+    <tr><td>Object</td><td>jobject</td><td>Ljava/lang/Object;</td></tr>
+  </table>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 5 — HW ALTERNATIVES
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-hwalt" class="tab-content">
+
+  <h1>Hardware Alternatives — What Replaces What</h1>
+  <p>
+    This project is designed to run entirely in software, without any automotive hardware.
+    Each hardware component has an in-code software substitute. Here is a complete mapping,
+    plus what you would swap in to run on real hardware.
+  </p>
+
+  <h2>1. CAN Bus Interface</h2>
+  <table>
+    <tr><th>Real Hardware</th><th>This Project's Alternative</th></tr>
+    <tr>
+      <td>
+        <strong>Physical CAN transceiver</strong> (e.g. NXP TJA1050)<br>
+        connected to a CAN controller (SJA1000, MCP2515, SA8155 integrated).<br>
+        Exposed as <code>/dev/can0</code> on QNX.<br>
+        <code>read(fd, &amp;frame, sizeof(struct can_frame))</code>
+      </td>
+      <td>
+        <strong><code>can_simulator.c</code></strong><br>
+        A state machine driven by a 100 ms timer tick (<code>usleep</code> in <code>can_tick_thread</code>).<br>
+        Generates realistic speed ramp, gear transitions, oil warm-up, door toggle.<br>
+        Called as <code>can_sim_tick(&amp;msg)</code> — returns the same <code>VehicleMessage</code> struct.
+      </td>
+    </tr>
+  </table>
+  <div class="callout green">
+    <strong>To plug in real hardware:</strong> Replace the body of <code>can_sim_tick()</code> with a <code>read(fd, &amp;can_frame, sizeof(can_frame))</code> call, decode the frame per your DBC file, and fill the <code>VehicleMessage</code> struct identically. Everything downstream (bridge, resmgr) is unchanged.
+  </div>
+
+  <h2>2. QNX API (for Linux host build)</h2>
+  <table>
+    <tr><th>Real QNX API</th><th>Stub / Alternative on Linux</th></tr>
+    <tr>
+      <td><code>sys/dispatch.h</code> — <code>dispatch_create</code>, <code>dispatch_block</code>, etc.</td>
+      <td><code>qnx_stubs/sys/dispatch.h</code> — empty type definitions and no-op functions. Allows CAN simulator and bridge code to compile on Linux for unit-test CI without a QNX license.</td>
+    </tr>
+    <tr>
+      <td><code>sys/iofunc.h</code> — <code>iofunc_attr_t</code>, <code>iofunc_attr_init</code>, <code>RESMGR_OCB_T</code></td>
+      <td><code>qnx_stubs/sys/iofunc.h</code> — stub type aliases so the structs compile.</td>
+    </tr>
+    <tr>
+      <td><code>resmgr_attach()</code>, <code>dispatch_handler()</code></td>
+      <td>Not available on Linux. The <code>HOST_BUILD</code> path compiles only <code>can_simulator.c</code> and <code>vehicle_bridge.c</code> — the dispatch loop in <code>vehicle_resmgr.c</code> is excluded from the CI test binary.</td>
+    </tr>
+  </table>
+
+  <h2>3. QNX → Android Inter-VM Transport</h2>
+  <table>
+    <tr><th>Real Hardware Transport</th><th>This Project's Alternative</th></tr>
+    <tr>
+      <td>
+        <strong>QNX Hypervisor virtio channel</strong> (qvm_vdev_virtio_pipe)<br>
+        or<br>
+        <strong>Shared memory</strong> (qvm_vdev_shmem) between QNX and Android VMs<br>
+        on Qualcomm SA8155P / SA8295P
+      </td>
+      <td>
+        <strong>TCP socket over QEMU virtual network</strong><br>
+        <code>10.0.2.2:9090</code> — the Android emulator's QEMU loopback alias for the host machine.<br>
+        QNX (QEMU guest) connects to Android emulator (another QEMU instance) via the host TCP stack.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Android Open Accessories (AOA)</strong> or<br>
+        <strong>Automotive Ethernet (100BASE-T1)</strong> gateway
+      </td>
+      <td>Same TCP socket — functionally equivalent for development. The <code>VehicleMessage</code> struct and framing are production-grade; only the transport layer changes.</td>
+    </tr>
+  </table>
+  <div class="callout warn">
+    <strong>10.0.2.2</strong> is QEMU's built-in alias for the host machine's loopback interface.
+    It is only valid inside the Android emulator. On a real device, replace with the actual IP of the QNX board or the virtio device path.
+  </div>
+
+  <h2>4. Android VHAL Service</h2>
+  <table>
+    <tr><th>Real AAOS Production Setup</th><th>This Project's Alternative</th></tr>
+    <tr>
+      <td>
+        A vendor-provided VHAL HAL service process that implements the HIDL/AIDL <code>IVehicle</code> interface.<br>
+        <code>CarPropertyManager</code> in the Android car framework talks to this process via Binder IPC.<br>
+        The HAL process reads from CAN via shared memory / virtio from QNX.
+      </td>
+      <td>
+        <strong>VhalBridgeService.java</strong> — a normal Android foreground service.<br>
+        <strong>VhalStore.java</strong> — an in-memory <code>ConcurrentHashMap</code> replacing the VHAL property database.<br>
+        <code>CarPropertyManager.set*()</code> calls are commented out and replaced by <code>VhalStore.put*()</code>.
+      </td>
+    </tr>
+  </table>
+
+  <h2>5. CI without QNX SDK</h2>
+  <table>
+    <tr><th>Full Production Build</th><th>CI Alternative (GitHub Actions)</th></tr>
+    <tr>
+      <td>
+        <code>qcc -Vgcc_ntox86_64</code> cross-compiler from QNX SDP 8.0.<br>
+        Requires a paid QNX license and SDP download.
+      </td>
+      <td>
+        <code>gcc -DHOST_BUILD -I./qnx_stubs</code> on Ubuntu 22.04.<br>
+        Compiles only <code>can_simulator.c</code> + test harness. Verifies logic without hardware or license.<br>
+        The QNX cross-compile CI job exists in the YAML but is disabled (<code>if: false</code>) — it documents the pipeline for teams who have the SDP.
+      </td>
+    </tr>
+    <tr>
+      <td>cppcheck or Klocwork on-premise</td>
+      <td>cppcheck open-source — runs in GitHub Actions, catches undefined behaviour, out-of-bounds, resource leaks in the C layer.</td>
+    </tr>
+  </table>
+
+  <h2>6. Summary — Swap table</h2>
+  <table>
+    <tr><th>Component</th><th>Emulator / CI substitute</th><th>Real hardware replacement</th></tr>
+    <tr><td>CAN frames</td><td><code>can_simulator.c</code> tick loop</td><td><code>open("/dev/can0")</code> + <code>read(frame)</code></td></tr>
+    <tr><td>QNX dispatch API</td><td><code>qnx_stubs/</code> header shims</td><td>QNX SDP 8 libc, full dispatch stack</td></tr>
+    <tr><td>VM-to-VM transport</td><td>TCP <code>10.0.2.2:9090</code></td><td>qvm_vdev_shmem or virtio pipe</td></tr>
+    <tr><td>VHAL HAL service</td><td>VhalBridgeService + VhalStore</td><td>HIDL/AIDL IVehicle implementation</td></tr>
+    <tr><td>CarPropertyManager writes</td><td>Commented out, VhalStore instead</td><td><code>cpm.setFloatProperty(…)</code></td></tr>
+    <tr><td>QNX cross-compiler</td><td>gcc + HOST_BUILD define</td><td>qcc from QNX SDP 8.0</td></tr>
+    <tr><td>Android hardware device</td><td>AAOS emulator (AVD)</td><td>Qualcomm SA8155P or SA8295P board</td></tr>
+  </table>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB 6 — SoC COMPARISON
+══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-soccompare" class="tab-content">
+
+  <h1>SoC Comparison — What Changes Per Platform</h1>
+  <p>
+    This project targets <strong>Qualcomm SA8155P</strong> running on a QEMU x86_64 emulator with QNX Neutrino.
+    When you port to a different automotive SoC, some code is reused verbatim, some is modified, and some
+    must be written from scratch. This tab maps every layer of the project to its porting effort per SoC.
+  </p>
+
+  <!-- ── Legend ────────────────────────────────────────────────────── -->
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0 1.5rem;">
+    <span style="background:rgba(63,185,80,.18);border:1px solid #3fb950;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#3fb950;">REUSE — unchanged</span>
+    <span style="background:rgba(227,179,65,.15);border:1px solid #e3b341;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#e3b341;">MODIFY — adapt existing</span>
+    <span style="background:rgba(248,81,73,.15);border:1px solid #f85149;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#f85149;">REWRITE — new implementation</span>
+    <span style="background:rgba(188,140,232,.15);border:1px solid #bc8ce8;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#bc8ce8;">NEW — feature not present before</span>
+  </div>
+
+  <!-- ── SoC quick-ref cards ─────────────────────────────────────── -->
+  <h2>SoC Quick Reference</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin:1rem 0 2rem;">
+
+    <div style="background:var(--surface);border:2px solid var(--accent);border-radius:8px;padding:1rem;">
+      <div style="font-weight:700;font-size:1rem;color:var(--accent);margin-bottom:.4rem;">Qualcomm SA8155P ← THIS PROJECT</div>
+      <table style="font-size:.82rem;width:100%;">
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>7 nm (TSMC)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Kryo 4 octa-core (2.84 GHz)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Adreno 640</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX Neutrino (hypervisor)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS guest VM</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>CANFD via SPI or PCIe CAN card</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>virtio / qvm_vdev_shmem</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Mercedes MBUX, BMW iDrive 8, Volvo Sensus</td></tr>
+      </table>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+      <div style="font-weight:700;font-size:1rem;color:#d2a679;margin-bottom:.4rem;">Qualcomm SA8295P</div>
+      <table style="font-size:.82rem;width:100%;">
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>5 nm (TSMC)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Kryo 5 octa-core (3.0 GHz)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Adreno 740</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rim .3rem .1rem 0;">RTOS</td><td>QNX Neutrino 8.0 (hypervisor)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS + ADAS guest VMs</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>Integrated CANFD controller</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>virtio + PCIe passthrough</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>GM Ultifi, Toyota Arene, Panasonic IVI</td></tr>
+      </table>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+      <div style="font-weight:700;font-size:1rem;color:#3fb950;margin-bottom:.4rem;">Renesas R-Car S4</div>
+      <table style="font-size:.82rem;width:100%;">
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>16 nm (TSMC)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A55 octa-core (1.2 GHz)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>PowerVR GE8300</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX or FreeRTOS (no hypervisor)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>Not typical — gateway/cluster focus</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>4× native CANFD controllers</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>Shared memory (ICCOM driver)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Toyota, Honda, Stellantis gateways</td></tr>
+      </table>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+      <div style="font-weight:700;font-size:1rem;color:#bc8ce8;margin-bottom:.4rem;">NXP i.MX 8QM</div>
+      <table style="font-size:.82rem;width:100%;">
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>28 nm (Samsung)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A72 dual + A53 quad</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Vivante GC7000XSVX</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX or Zephyr on Cortex-M4</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS on A72 cores</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>3× native CAN (FLEXCAN)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>RPMSG / RPMsg-lite over MU</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Audi cluster, Ford IVI, VW MIB3</td></tr>
+      </table>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+      <div style="font-weight:700;font-size:1rem;color:#f85149;margin-bottom:.4rem;">TI TDA4VM (Jacinto 7)</div>
+      <table style="font-size:.82rem;width:100%;">
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>16 nm (TSMC)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A72 dual + R5F dual</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>PowerVR Series8XE</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>TI-RTOS / FreeRTOS on R5F, Linux on A72</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>Rare — ADAS / domain controller focus</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>6× native CANFD (MCAN)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>IPC via RPMessage (TI SDK)</td></tr>
+        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Toyota ADAS, Bosch radar, Aptiv</td></tr>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       LAYER-BY-LAYER PORT TABLE
+  ══════════════════════════════════════════════════════════════════ -->
+  <h2>Layer-by-layer porting analysis</h2>
+
+  <!-- ── 1. CAN Interface ─────────────────────────────────────────── -->
+  <h3>1. CAN Interface (<code>can_simulator.c</code> → real driver)</h3>
+  <table>
+    <tr>
+      <th>SoC</th>
+      <th>Change type</th>
+      <th>What changes in <code>can_simulator.c</code></th>
+      <th>New features / notes</th>
+    </tr>
+    <tr>
+      <td><strong>SA8295P</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Replace tick loop body with <code>open("/dev/can1")</code> + <code>read(fd, &amp;frame, 16)</code>. SA8295P exposes CANFD as <code>/dev/can0</code>–<code>/dev/can3</code> via QNX CANFD driver.</td>
+      <td>CANFD frames up to 64 bytes — <code>PropValue</code> union stays the same since vehicle signals fit in 4 bytes.</td>
+    </tr>
+    <tr>
+      <td><strong>Renesas R-Car S4</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Replace tick loop with Renesas RCANFD driver read. Device node: <code>/dev/rcan0</code>–<code>/dev/rcan3</code>. Frame struct is identical to Linux <code>can_frame</code>.</td>
+      <td><strong>4 native CANFD channels</strong> — you can route different signal groups (powertrain, chassis, body) to different channels and merge them in <code>can_sim_tick()</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>NXP i.MX 8QM</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Use NXP FLEXCAN driver. Device <code>/dev/can0</code>. Frame struct: <code>struct can_frame</code> (Linux socketCAN compatible).</td>
+      <td>FLEXCAN supports only Classic CAN 2.0B (not FD). Max payload 8 bytes — no change needed in <code>VehicleMessage</code>. Must set baud rate via <code>ioctl(SIOCSCANGPIOSET)</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>TI TDA4VM</strong></td>
+      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
+      <td>TDA4VM runs TI-RTOS on R5F cores; no QNX. CAN is read via TI MCAN driver using <strong>PRSDK APIs</strong> (<code>MCAN_getData()</code>). The R5F firmware sends decoded signals to the A72 Linux side via RPMessage IPC.</td>
+      <td>Must port <code>can_sim_tick()</code> logic to TI-RTOS task model. No <code>usleep</code> — use <code>Task_sleep()</code> (BIOS) or <code>vTaskDelay()</code> (FreeRTOS).</td>
+    </tr>
+  </table>
+
+  <!-- ── 2. Resource Manager ──────────────────────────────────────── -->
+  <h3>2. QNX Resource Manager (<code>vehicle_resmgr.c</code>)</h3>
+  <table>
+    <tr>
+      <th>SoC</th>
+      <th>Change type</th>
+      <th>What changes</th>
+      <th>New features / notes</th>
+    </tr>
+    <tr>
+      <td><strong>SA8295P</strong></td>
+      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
+      <td>Zero changes. Same QNX SDP 8.0 APIs, same dispatch model, same <code>/dev/vehicle/*</code> paths. Recompile with <code>qcc -Vgcc_ntox86_64</code> → <code>qcc -Vgcc_ntoaarch64le</code> for ARM64 target.</td>
+      <td>SA8295P is AArch64 — change <code>Makefile</code> target variant only. All resmgr code is architecture-agnostic C.</td>
+    </tr>
+    <tr>
+      <td><strong>Renesas R-Car S4</strong></td>
+      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
+      <td>If running QNX Neutrino on R-Car S4 (supported via QNX BSP for R-Car Gen3/Gen4), the dispatch loop, <code>iofunc_attr</code>, and <code>io_read</code> handler are identical.</td>
+      <td>Renesas provides a QNX BSP (Board Support Package) — you plug it in, recompile for AArch64, and <code>/dev/vehicle/*</code> works unchanged.</td>
+    </tr>
+    <tr>
+      <td><strong>NXP i.MX 8QM</strong></td>
+      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
+      <td>QNX runs on the A72 cluster. Same QNX APIs. Recompile for AArch64. The resmgr code is unchanged.</td>
+      <td>i.MX 8QM has a Cortex-M4F safety core running Zephyr for ISO 26262 ASIL B tasks. You might expose a second set of device nodes from the M4 side via RPMSG — that would be a new <code>vehicle_resmgr_m4.c</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>TI TDA4VM</strong></td>
+      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
+      <td>No QNX → no resource manager. On A72 (Linux), replace with a <strong>character device driver</strong> (<code>cdev</code>) or a <strong>sysfs</strong> interface exposing <code>/sys/class/vehicle/speed</code>.</td>
+      <td>
+        Linux cdev equivalent:<br>
+        <code>register_chrdev(MAJOR, "vehicle", &amp;fops)</code><br>
+        <code>fops.read</code> = same format_prop logic.<br>
+        The dispatch loop is replaced by the kernel's VFS — you just implement <code>file_operations.read</code>.
+      </td>
+    </tr>
+  </table>
+
+  <!-- ── 3. VM Transport (Bridge) ─────────────────────────────────── -->
+  <h3>3. VM-to-Android Transport (<code>vehicle_bridge.c</code>)</h3>
+  <table>
+    <tr>
+      <th>SoC</th>
+      <th>Change type</th>
+      <th>What changes in <code>vehicle_bridge.c</code></th>
+      <th>New features / notes</th>
+    </tr>
+    <tr>
+      <td><strong>SA8295P</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Replace TCP socket with <strong>QNX virtio channel</strong>. Open <code>/dev/qvm/guest0/virtio0</code>, write <code>VehicleMessage</code> structs directly. The <code>bridge_send()</code> function changes from <code>send()</code> to <code>write()</code>. <code>bridge_connect()</code> becomes <code>open()</code>.</td>
+      <td>
+        Virtio is zero-copy shared memory — latency drops from ~1 ms (TCP loopback) to ~10 µs.<br>
+        <code>MSG_NOSIGNAL</code> flag is dropped (write to virtio never raises SIGPIPE).<br>
+        Reconnect logic simplifies: the channel is always open while the hypervisor is running.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Renesas R-Car S4</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Renesas uses <strong>ICCOM (Inter-Core Communication)</strong> over shared SRAM between QNX and Linux/RCAR HYPERVISOR partitions. Replace TCP with <code>iccom_send(channel, &amp;msg, sizeof(msg))</code>.</td>
+      <td>
+        ICCOM channels are named integer IDs (e.g. channel 0 = powertrain, 1 = body).<br>
+        <code>VehicleMessage</code> struct stays identical — only the transport call changes.<br>
+        <strong>NEW:</strong> Multi-channel routing — send speed/gear on channel 0, door lock on channel 1 for prioritisation.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>NXP i.MX 8QM</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>NXP uses <strong>RPMSG / RPMsg-lite</strong> over Messaging Unit (MU) hardware registers between A72 (QNX) and M4 (Zephyr). Replace TCP with <code>rpmsg_send(ept, &amp;msg, sizeof(msg))</code>.</td>
+      <td>
+        RPMsg endpoints are created at boot via device tree overlays.<br>
+        Max RPMsg payload is 496 bytes — <code>VehicleMessage</code> at 20 bytes fits easily.<br>
+        <strong>NEW:</strong> The M4 core can act as a CAN-to-RPMsg gateway, decoupling real-time CAN reads from the QNX application core.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>TI TDA4VM</strong></td>
+      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
+      <td>TI uses <strong>RPMessage</strong> (different from NXP RPMsg — TI's own implementation) between R5F and A72. No QNX, no Android VHAL. The bridge becomes a Linux <code>rpmsg_client</code> kernel module or user-space <code>ti-ipc</code> library call.</td>
+      <td>
+        <strong>NEW:</strong> <code>VehicleMessage</code> struct can be reused on the wire — define it in a shared header in the TI SDK <code>ipc_echo_test</code> style.<br>
+        On A72 Linux side: read from <code>/dev/rpmsg0</code> device node.
+      </td>
+    </tr>
+  </table>
+
+  <!-- ── 4. Android VHAL Bridge ────────────────────────────────────── -->
+  <h3>4. Android VHAL Bridge (<code>vhal_bridge.cpp</code> + Java service)</h3>
+  <table>
+    <tr>
+      <th>SoC</th>
+      <th>Change type</th>
+      <th>What changes</th>
+      <th>New features / notes</th>
+    </tr>
+    <tr>
+      <td><strong>SA8295P</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Replace TCP <code>accept()</code>/<code>recv()</code> loop in <code>bridge_thread()</code> with a <code>read()</code> on the virtio char device (<code>/dev/virtio-ports/vhal0</code>). JNI callbacks, <code>VehicleMessage</code> framing, and all Java code are unchanged.</td>
+      <td>
+        <strong>NEW — Multiple Android VMs:</strong> SA8295P can host a second Android VM for the rear-seat display. You'd open a second virtio port (<code>/dev/virtio-ports/rear0</code>) and publish a subset of properties (media state, AC) to it.<br>
+        <strong>NEW — AIDL VHAL:</strong> Android 13+ AAOS uses AIDL (not HIDL) for VHAL. The <code>CarPropertyManager</code> calls in the Java service must move from deprecated HIDL stubs to the new <code>IVehicle.aidl</code> interface.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Renesas R-Car S4</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Replace TCP server with ICCOM reader on Android side. Since R-Car S4 typically doesn't run Android, this layer may run on a companion R-Car H3 IVI chip instead. <code>vhal_bridge.cpp</code> reads from <code>/dev/iccom0</code>.</td>
+      <td>
+        <strong>NEW:</strong> Renesas R-Car S4 is a <em>gateway</em> SoC — it aggregates multiple CAN buses and forwards via Automotive Ethernet (100BASE-T1 / 1000BASE-T1) to the IVI SoC. You'd add an Ethernet receiver in <code>vhal_bridge.cpp</code> in place of TCP, using the same <code>VehicleMessage</code> struct over UDP multicast.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>NXP i.MX 8QM</strong></td>
+      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
+      <td>i.MX 8QM runs Android AAOS on the A72 cores. If QNX and Android run as separate processes (no hypervisor — just partitioned cores), TCP loopback between them still works on the same chip. The entire Android side is unchanged.</td>
+      <td>
+        <strong>NEW — Cortex-M4 safety island:</strong> The M4 can run a watchdog that monitors VHAL property staleness. If <code>VhalStore</code> hasn't been updated in >500 ms, the M4 triggers a warning via GPIO to the cluster MCU.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>TI TDA4VM</strong></td>
+      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
+      <td>No Android — TDA4VM is an ADAS SoC. Replace the VHAL bridge with a <strong>ROS 2 publisher</strong> (robotics middleware used in autonomous driving stacks) or a <strong>DDS topic</strong> (AUTOSAR AP). The <code>VehicleMessage</code> struct maps to a ROS 2 message definition.</td>
+      <td>
+        <strong>NEW — AUTOSAR Adaptive Platform:</strong> TI SDK integrates with AUTOSAR AP middleware. Vehicle signals become <code>ara::com</code> service interfaces instead of VHAL properties.<br>
+        <strong>NEW — Camera/Radar fusion:</strong> TDA4VM has dedicated MMA (Matrix Multiplication Accelerator) for sensor fusion. Vehicle speed/gear from CAN are fused with radar data — add a new <code>adas_fusion.c</code> module fed by the same <code>can_sim_tick()</code> output.
+      </td>
+    </tr>
+  </table>
+
+  <!-- ── 5. Build System ────────────────────────────────────────────── -->
+  <h3>5. Build System &amp; Toolchain (<code>Makefile</code>)</h3>
+  <table>
+    <tr>
+      <th>SoC</th>
+      <th>Change type</th>
+      <th>What changes in Makefile</th>
+    </tr>
+    <tr>
+      <td><strong>SA8295P</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Change <code>CC := qcc -Vgcc_ntox86_64</code> → <code>qcc -Vgcc_ntoaarch64le</code>. Add <code>-mcpu=cortex-a78</code>. All source files and logic unchanged.</td>
+    </tr>
+    <tr>
+      <td><strong>Renesas R-Car S4</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Use Renesas QNX BSP toolchain: <code>CC := qcc -Vgcc_ntoaarch64le</code> with BSP sysroot. Add <code>-I$(RCAR_BSP)/include</code> and link <code>-liccom</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>NXP i.MX 8QM</strong></td>
+      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
+      <td>Use NXP QNX BSP: <code>qcc -Vgcc_ntoaarch64le</code>. Add <code>-I$(IMX_BSP)/include</code> and link <code>-lrpmsg</code>. For the M4 side: separate CMake build using NXP MCUXpresso SDK.</td>
+    </tr>
+    <tr>
+      <td><strong>TI TDA4VM</strong></td>
+      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
+      <td>Completely different build system. R5F firmware: TI CGT compiler (<code>tiarmclang</code>) via <code>gmake</code> with TI PDK/PRSDK Makefiles. A72 Linux: CMake with Yocto SDK sysroot (<code>aarch64-linux-gnu-gcc</code>).</td>
+    </tr>
+  </table>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       FEATURE MATRIX
+  ══════════════════════════════════════════════════════════════════ -->
+  <h2>Feature matrix across SoCs</h2>
+  <table>
+    <tr>
+      <th>Feature</th>
+      <th>SA8155P<br><small>(this project)</small></th>
+      <th>SA8295P</th>
+      <th>R-Car S4</th>
+      <th>i.MX 8QM</th>
+      <th>TDA4VM</th>
+    </tr>
+    <tr>
+      <td><code>/dev/vehicle/*</code> POSIX interface</td>
+      <td style="color:#3fb950;">✓ QNX resmgr</td>
+      <td style="color:#3fb950;">✓ reuse</td>
+      <td style="color:#3fb950;">✓ reuse (QNX BSP)</td>
+      <td style="color:#3fb950;">✓ reuse</td>
+      <td style="color:#e3b341;">→ Linux cdev</td>
+    </tr>
+    <tr>
+      <td>CAN frame ingestion</td>
+      <td style="color:#e3b341;">Simulated</td>
+      <td style="color:#3fb950;">Native CANFD</td>
+      <td style="color:#3fb950;">4× native CANFD</td>
+      <td style="color:#3fb950;">3× FLEXCAN</td>
+      <td style="color:#3fb950;">6× MCAN (CANFD)</td>
+    </tr>
+    <tr>
+      <td>VM transport to Android</td>
+      <td style="color:#e3b341;">TCP socket</td>
+      <td style="color:#3fb950;">virtio (µs latency)</td>
+      <td style="color:#e3b341;">ICCOM / Eth</td>
+      <td style="color:#e3b341;">RPMsg over MU</td>
+      <td style="color:#f85149;">N/A (no Android)</td>
+    </tr>
+    <tr>
+      <td>VHAL property injection</td>
+      <td style="color:#e3b341;">VhalStore stub</td>
+      <td style="color:#3fb950;">Real CarPropertyManager (AIDL)</td>
+      <td style="color:#e3b341;">Companion IVI chip</td>
+      <td style="color:#3fb950;">Real CarPropertyManager</td>
+      <td style="color:#f85149;">ROS2 / DDS / AUTOSAR AP</td>
+    </tr>
+    <tr>
+      <td>Safety core / ASIL partition</td>
+      <td style="color:#f85149;">None</td>
+      <td style="color:#3fb950;">QNX ASIL-D partition</td>
+      <td style="color:#3fb950;">CR52 safety core</td>
+      <td style="color:#3fb950;">M4F safety island</td>
+      <td style="color:#3fb950;">R5F dual-core lockstep</td>
+    </tr>
+    <tr>
+      <td>Multi-display / rear seat</td>
+      <td style="color:#f85149;">No</td>
+      <td style="color:#3fb950;">Second Android VM</td>
+      <td style="color:#f85149;">No (gateway role)</td>
+      <td style="color:#e3b341;">Possible via 2nd display</td>
+      <td style="color:#f85149;">No</td>
+    </tr>
+    <tr>
+      <td>OTA update framework</td>
+      <td style="color:#f85149;">Not in this project</td>
+      <td style="color:#3fb950;">QNX SafeUpdate + Android A/B</td>
+      <td style="color:#e3b341;">Renesas SOTA client</td>
+      <td style="color:#e3b341;">NXP MCUBoot + Android A/B</td>
+      <td style="color:#e3b341;">TI OTA via Linux RAUC</td>
+    </tr>
+    <tr>
+      <td><code>VehicleMessage</code> struct</td>
+      <td style="color:#3fb950;">✓ defined</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#e3b341;">reuse struct, wrap in ROS msg</td>
+    </tr>
+    <tr>
+      <td>Unit tests (<code>test_can_sim.c</code>)</td>
+      <td style="color:#3fb950;">✓ Linux CI</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#3fb950;">reuse unchanged</td>
+      <td style="color:#e3b341;">reuse, change RTOS timer mocks</td>
+    </tr>
+  </table>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       MIGRATION GUIDE
+  ══════════════════════════════════════════════════════════════════ -->
+  <h2>Concrete migration guide — SA8155P → SA8295P</h2>
+  <p>This is the most likely upgrade path (same QNX + Android AAOS stack, newer chip). Here is the exact diff needed:</p>
+
+  <h3>Step 1 — Makefile: change target architecture</h3>
+  <pre><code>- CC := qcc -Vgcc_ntox86_64
++ CC := qcc -Vgcc_ntoaarch64le
++ CFLAGS += -mcpu=cortex-a78 -march=armv8.2-a</code></pre>
+
+  <h3>Step 2 — can_simulator.c: swap tick loop for real CAN read</h3>
+  <pre><code>- /* Simulated tick */
+- static int tick = 0; tick++;
+- switch ((tick / 10) % 4) { ... }
+
++ /* Real SA8295P integrated CANFD */
++ static int fd = -1;
++ if (fd &lt; 0) fd = open("/dev/can0", O_RDWR);
++
++ struct canfd_frame frame;
++ ssize_t n = read(fd, &amp;frame, CANFD_MTU);
++ if (n &lt; 0) return 0;
++
++ /* Decode per DBC signal layout */
++ switch (frame.can_id) {
++ case 0x0D0: out->prop_id = PROP_VEHICLE_SPEED;
++             out->value.f = ((frame.data[0]&lt;&lt;8)|frame.data[1]) * 0.01f;
++             return PROP_VEHICLE_SPEED;
++ case 0x100: out->prop_id = PROP_GEAR_SELECTION;
++             out->value.i = frame.data[0];
++             return PROP_GEAR_SELECTION;
++ /* ... */
++ }</code></pre>
+
+  <h3>Step 3 — vehicle_bridge.c: swap TCP for virtio</h3>
+  <pre><code>- s_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+- connect(s_sockfd, &amp;addr, sizeof(addr));
+
++ s_sockfd = open("/dev/qvm/guest0/virtio0", O_RDWR);
++ /* No connect() needed — virtio channel is always open */
+
+  /* bridge_send() — only the write call changes */
+- send(s_sockfd, msg, sizeof(*msg), MSG_NOSIGNAL);
++ write(s_sockfd, msg, sizeof(*msg));</code></pre>
+
+  <h3>Step 4 — vhal_bridge.cpp: swap TCP server for virtio client read</h3>
+  <pre><code>- int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+- bind(server_fd, &amp;addr, sizeof(addr));
+- listen(server_fd, 1);
+- int client = accept(server_fd, nullptr, nullptr);
+
++ int virt_fd = open("/dev/virtio-ports/vhal0", O_RDONLY);
++ /* No accept() — virtio port is a direct pipe */
+
+  /* Inner receive loop — unchanged */
+- recv(client, &amp;msg, sizeof(msg), MSG_WAITALL);
++ read(virt_fd, &amp;msg, sizeof(msg));</code></pre>
+
+  <h3>Step 5 — VhalBridgeService.java: upgrade to AIDL VHAL (Android 13+)</h3>
+  <pre><code>// Old (HIDL — Android 12 and earlier):
+// IVehicle.getValues(propRequest, callback);
+
+// New (AIDL — Android 13+):
+import android.hardware.automotive.vehicle.IVehicle;
+import android.hardware.automotive.vehicle.VehiclePropValue;
+
+// In onFloatProperty():
+- VhalStore.getInstance().putFloat(propId, value);
++ VehiclePropValue prop = new VehiclePropValue();
++ prop.prop      = propId;
++ prop.value     = new RawPropValues();
++ prop.value.floatValues = new float[]{ value };
++ mVehicleService.setValues(mCallback, List.of(prop));</code></pre>
+
+  <div class="callout green">
+    <strong>Summary for SA8155P → SA8295P:</strong> ~40 lines of code change across 3 files. All business logic (<code>format_prop</code>, <code>io_read</code>, <code>VehicleAttr</code>, JNI callbacks, <code>VhalStore</code>, unit tests) is reused without modification.
+  </div>
+
+  <h2>Concrete migration guide — SA8155P → NXP i.MX 8QM</h2>
+
+  <h3>New module needed: RPMsg transport (<code>vehicle_bridge_rpmsg.c</code>)</h3>
+  <pre><code>/* Replaces vehicle_bridge.c on i.MX 8QM */
+#include &lt;rpmsg_lite.h&gt;
+
+static struct rpmsg_lite_instance *s_rpmsg = NULL;
+static struct rpmsg_lite_endpoint *s_ept   = NULL;
+
+int bridge_connect(void) {
+    s_rpmsg = rpmsg_lite_master_init(RPMSG_SHMEM_BASE, RPMSG_SHMEM_SIZE,
+                                      RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
+    s_ept   = rpmsg_lite_create_ept(s_rpmsg, LOCAL_EPT_ADDR,
+                                    rpmsg_queue_rx_cb, NULL);
+    return s_rpmsg ? 0 : -1;
+}
+
+int bridge_send(const VehicleMessage *msg) {
+    return rpmsg_lite_send(s_rpmsg, s_ept, REMOTE_EPT_ADDR,
+                           (char *)msg, sizeof(*msg), RL_BLOCK);
+}</code></pre>
+  <p>
+    <strong>Everything else is unchanged:</strong> <code>vehicle_resmgr.c</code>, <code>vehicle_props.h</code>, <code>can_simulator.c</code>,
+    the Android side, and all unit tests. Only the transport implementation file is swapped.
+    The Makefile adds <code>-lrpmsg_lite</code> and the NXP BSP sysroot.
+  </p>
+
+</div>
+
+<!-- ── Tab switch script ── -->
+<script>
+  function showTab(id) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
