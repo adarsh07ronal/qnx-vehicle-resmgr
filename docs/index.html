@@ -206,6 +206,12 @@
 
     /* ── Inline anchor ids ────────────────────────────────────────────── */
     .anchor { display: block; position: relative; top: -70px; visibility: hidden; }
+
+    /* ── Interview Q&amp;A ──────────────────────────────────────────────── */
+    .qa { border: 1px solid var(--border); border-radius: var(--radius); margin: 1rem 0; overflow: hidden; }
+    .qa-q { background: var(--surface); padding: .7rem 1rem; font-weight: 600; color: var(--accent); }
+    .qa-a { padding: .9rem 1.2rem; }
+    .qa-a p:first-child { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -224,7 +230,7 @@
   <button class="tab-btn"        onclick="showTab('files')"       >File Reference</button>
   <button class="tab-btn"        onclick="showTab('autostack')"   >Automotive Stack</button>
   <button class="tab-btn"        onclick="showTab('hwalt')"       >HW Alternatives</button>
-  <button class="tab-btn"        onclick="showTab('soccompare')"  >SoC Comparison</button>
+  <button class="tab-btn"        onclick="showTab('interview')"   >Interview Prep</button>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════════════════════
@@ -366,15 +372,35 @@ while (1) {
 
   <h3>io_read handler contract</h3>
   <pre><code>static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
-    if (ocb->offset > 0) return _RESMGR_NPARTS(0);  // EOF on 2nd read
-    SETIOV(ctp->iov, buf, len);                       // set reply buffer
+    static char buf[64];   // must outlive the call — see callout below
+    if (ocb->offset > 0) { _IO_SET_READ_NBYTES(ctp, 0); return _RESMGR_NPARTS(0); }
+    int len = format_prop(attr->prop_id, buf, sizeof(buf));
+    SETIOV(ctp->iov, buf, len);           // set reply buffer
     ocb->offset += len;
-    return _RESMGR_NPARTS(1);                         // 1 iov part to send
+    _IO_SET_READ_NBYTES(ctp, len);        // actual byte count the caller's read() sees
+    return _RESMGR_NPARTS(1);             // 1 iov part to send
 }</code></pre>
   <p>
     <code>RESMGR_OCB_T</code> = Open Control Block — one per <code>open()</code> call.
     <code>ocb-&gt;offset</code> tracks how many bytes have been sent so sequential reads work correctly.
   </p>
+  <div class="callout warn">
+    <strong>Two non-obvious requirements, found by testing on real QNX under QEMU:</strong>
+    <ol>
+      <li><code>_RESMGR_NPARTS(n)</code> only tells the framework how many iov parts to reply with — the
+      actual byte count returned to the caller's <code>read()</code> comes from <code>ctp-&gt;status</code>,
+      set via <code>_IO_SET_READ_NBYTES()</code>. Omit it and every read silently reports 0 bytes (instant
+      EOF) even though the iov itself has valid data.</li>
+      <li>The reply is copied out of <code>ctp-&gt;iov</code> <em>after</em> this function returns, so a plain
+      stack-local <code>buf</code> can get clobbered before the framework actually sends it — intermittently,
+      depending on what else is on the stack. Making it <code>static</code> fixes the lifetime (safe here
+      since the dispatch loop is single-threaded).</li>
+    </ol>
+    Also required: <code>resmgr_attr_t.nparts_max</code> must be set (≥1) before <code>resmgr_attach()</code>,
+    and QNX 8 clients default to <code>_IO_READ64</code>/<code>_IO_WRITE64</code>, so <code>.read64</code>/<code>.write64</code>
+    need wiring up too, not just <code>.read</code>/<code>.write</code>. See the Interview Prep tab for the
+    full debugging story.
+  </div>
 
   <h3>VehicleAttr — extending iofunc_attr_t</h3>
   <pre><code>typedef struct {
@@ -400,13 +426,24 @@ read(fd, &amp;frame, sizeof(struct can_frame));  // blocks until frame arrives
 uint32_t can_sim_tick(VehicleMessage *out) {
     static int tick = 0; tick++;
     switch ((tick / 10) % 4) {  // rotate through 4 properties
-    case 0: /* update speed  */ return PROP_VEHICLE_SPEED;
-    case 1: /* update gear   */ return PROP_GEAR_SELECTION;
+    case 0:
+        s_speed_kmh += 2.0f;
+        if (s_speed_kmh == s_last_speed) return 0;   // only report real changes
+        s_last_speed = s_speed_kmh;
+        return PROP_VEHICLE_SPEED;
+    case 1: /* same compare-and-report pattern for gear */ return PROP_GEAR_SELECTION;
     ...
     }
 }</code></pre>
   <div class="callout green">
     <strong>Pattern — Software CAN simulation:</strong> Divide tick counter by the number of ticks per update period, then modulo by the number of properties to get a round-robin property update loop that is deterministic and testable.
+  </div>
+  <div class="callout warn">
+    <strong>Bug found on real hardware:</strong> the four <code>switch</code> cases originally always returned
+    a non-zero <code>PROP_*</code> id unconditionally, even when the value hadn't changed — the function's own
+    doc comment promised "0 if nothing changed," but that path was dead code since <code>(tick/10)%4</code>
+    only ever yields 0–3. Fixed by tracking the last-reported value per property and returning 0 when it's
+    unchanged, which also cut TCP bridge traffic roughly 4x.
   </div>
 
   <h3>Monotonic timestamp</h3>
@@ -690,6 +727,13 @@ public float getFloat(int propId, float def) {
     }
 }</code></pre>
       <p>Note the <code>static int tick = 0</code> inside the function — this is a <em>function-local static</em>, initialised once and persistent across calls, without polluting file scope.</p>
+      <div class="callout warn">
+        <strong>Simplified above for readability.</strong> The real function also keeps a <code>static</code>
+        last-reported value per property (<code>s_last_speed</code>, <code>s_last_gear</code>, etc.) and returns
+        <code>0</code> when the new value equals the last one — otherwise every case always returned non-zero
+        unconditionally, and the documented "<code>0</code> if nothing changed" contract was never actually
+        honoured. See <code>src/can_simulator.c</code> for the full version.
+      </div>
     </div>
   </div>
 
@@ -759,27 +803,33 @@ public float getFloat(int propId, float def) {
       <h3><span class="pill">function</span> io_read() — the core handler</h3>
       <pre><code>static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
     VehicleAttr *attr = (VehicleAttr *)ocb->attr;  // cast base to derived
-    char buf[64];
+    static char buf[64];   // static: must outlive this function's return
 
-    if (ocb->offset > 0) return _RESMGR_NPARTS(0); // EOF on re-read
+    if (ocb->offset > 0) { _IO_SET_READ_NBYTES(ctp, 0); return _RESMGR_NPARTS(0); }
 
     int len = format_prop(attr->prop_id, buf, sizeof(buf));
     SETIOV(ctp->iov, buf, len);  // set reply iov (scatter-gather)
     ocb->offset += len;
+    _IO_SET_READ_NBYTES(ctp, len);  // byte count the caller's read() actually sees
     return _RESMGR_NPARTS(1);    // 1 iov segment in reply
 }</code></pre>
 
       <h3><span class="pill">function</span> register_device()</h3>
       <pre><code>static void register_device(dispatch_t *dpp, resmgr_attr_t *rattr,
-                             iofunc_funcs_t *funcs, resmgr_io_funcs_t *io_funcs,
+                             resmgr_connect_funcs_t *connect_funcs, resmgr_io_funcs_t *io_funcs,
                              VehicleAttr *dev, const char *path, uint32_t prop_id) {
     iofunc_attr_init(&amp;dev->attr, S_IFCHR | 0444, NULL, NULL); // char device, read-only
     dev->prop_id = prop_id;
     strncpy(dev->path, path, sizeof(dev->path) - 1);
 
-    resmgr_attach(dpp, rattr, path, _FTYPE_ANY, 0, io_funcs, funcs, &amp;dev->attr);
+    resmgr_attach(dpp, rattr, path, _FTYPE_ANY, 0, connect_funcs, io_funcs, &amp;dev->attr);
 }</code></pre>
       <p><code>S_IFCHR | 0444</code> = character device, world-readable. <code>_FTYPE_ANY</code> = accept any open type (regular, block, etc.).</p>
+      <div class="callout warn">
+        An earlier version of this code passed a made-up <code>iofunc_funcs_t</code> table into the
+        <code>connect_funcs</code> slot instead of a real <code>resmgr_connect_funcs_t</code> — it compiled fine
+        (the parameter is effectively opaque) but was structurally wrong. See the Interview Prep tab.
+      </div>
 
       <h3><span class="pill">thread</span> can_tick_thread()</h3>
       <pre><code>static void *can_tick_thread(void *arg) {
@@ -800,8 +850,9 @@ public float getFloat(int propId, float def) {
       <ol>
         <li><code>can_sim_init()</code> — reset simulator state</li>
         <li><code>dispatch_create()</code> — create QNX message channel</li>
-        <li><code>iofunc_func_init()</code> — fill io_funcs with QNX defaults</li>
-        <li>Override <code>io_funcs.read</code> and <code>io_funcs.write</code> with custom handlers</li>
+        <li>Set <code>rattr.nparts_max = 1</code> — reserve reply iov capacity (required, see callout above)</li>
+        <li><code>iofunc_func_init()</code> — fill <code>connect_funcs</code>/<code>io_funcs</code> with QNX defaults</li>
+        <li>Override <code>io_funcs.read/.write</code> <strong>and</strong> <code>.read64/.write64</code> with custom handlers</li>
         <li><code>mkdir("/dev/vehicle", 0755)</code> — ensure directory exists</li>
         <li><code>register_device()</code> ×4 — publish each /dev/vehicle/* node</li>
         <li><code>pthread_create(&amp;tick_tid, …, can_tick_thread, …)</code> — start CAN loop</li>
@@ -1309,498 +1360,171 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     TAB 6 — SoC COMPARISON
+     TAB 6 — INTERVIEW PREP
 ══════════════════════════════════════════════════════════════════════ -->
-<div id="tab-soccompare" class="tab-content">
+<div id="tab-interview" class="tab-content">
 
-  <h1>SoC Comparison — What Changes Per Platform</h1>
+  <h1>Interview Prep</h1>
   <p>
-    This project targets <strong>Qualcomm SA8155P</strong> running on a QEMU x86_64 emulator with QNX Neutrino.
-    When you port to a different automotive SoC, some code is reused verbatim, some is modified, and some
-    must be written from scratch. This tab maps every layer of the project to its porting effort per SoC.
+    Questions an interviewer is likely to ask about this project, grouped by theme. The debugging
+    section is drawn from real bugs found by testing on genuine QNX SDP 8.0 under QEMU — not the
+    Linux host stub — and is the strongest material here: it shows systems debugging, not just
+    typing code that compiles.
   </p>
 
-  <!-- ── Legend ────────────────────────────────────────────────────── -->
-  <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0 1.5rem;">
-    <span style="background:rgba(63,185,80,.18);border:1px solid #3fb950;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#3fb950;">REUSE — unchanged</span>
-    <span style="background:rgba(227,179,65,.15);border:1px solid #e3b341;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#e3b341;">MODIFY — adapt existing</span>
-    <span style="background:rgba(248,81,73,.15);border:1px solid #f85149;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#f85149;">REWRITE — new implementation</span>
-    <span style="background:rgba(188,140,232,.15);border:1px solid #bc8ce8;border-radius:4px;padding:.2rem .7rem;font-size:.82rem;font-weight:700;color:#bc8ce8;">NEW — feature not present before</span>
+  <h2>The 30-second pitch</h2>
+  <div class="qa">
+    <div class="qa-q">"Walk me through this project."</div>
+    <div class="qa-a">
+      <p>It's a QNX Neutrino resource manager that simulates a vehicle ECU, exposing speed, gear,
+      oil temperature, and door lock as POSIX device nodes under <code>/dev/vehicle/*</code> — so
+      any process can <code>cat /dev/vehicle/speed</code> and get live data. It also runs a TCP
+      client that pushes the same data to an Android Automotive OS bridge over the wire format
+      real QNX/Android hypervisor systems use (just swapping virtio/shared-memory for a socket in
+      the emulator). The interesting part isn't the simulator logic — it's that I built and ran the
+      whole thing against a real QNX SDP install under QEMU rather than stopping at "compiles
+      against a mock," which is where all five of the real bugs actually surfaced.</p>
+    </div>
   </div>
 
-  <!-- ── SoC quick-ref cards ─────────────────────────────────────── -->
-  <h2>SoC Quick Reference</h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin:1rem 0 2rem;">
-
-    <div style="background:var(--surface);border:2px solid var(--accent);border-radius:8px;padding:1rem;">
-      <div style="font-weight:700;font-size:1rem;color:var(--accent);margin-bottom:.4rem;">Qualcomm SA8155P ← THIS PROJECT</div>
-      <table style="font-size:.82rem;width:100%;">
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>7 nm (TSMC)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Kryo 4 octa-core (2.84 GHz)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Adreno 640</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX Neutrino (hypervisor)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS guest VM</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>CANFD via SPI or PCIe CAN card</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>virtio / qvm_vdev_shmem</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Mercedes MBUX, BMW iDrive 8, Volvo Sensus</td></tr>
-      </table>
+  <h2>QNX resource manager internals</h2>
+  <div class="qa">
+    <div class="qa-q">How does a QNX resource manager actually work?</div>
+    <div class="qa-a">
+      <p>QNX Neutrino is a microkernel — drivers run in user space as ordinary processes, and every
+      POSIX call becomes an IPC message. <code>resmgr_attach()</code> registers a pathname with the
+      kernel's global Pathname Space; when another process calls <code>open()</code>/<code>read()</code>
+      on that path, the kernel routes a message to whichever process owns it via
+      <code>MsgSend</code> → <code>MsgReceive</code> → <code>MsgReply</code>. My dispatch loop just
+      blocks in <code>dispatch_block()</code> (a wrapper over <code>MsgReceive</code>) and hands off
+      to the registered <code>io_funcs</code> table.</p>
     </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-      <div style="font-weight:700;font-size:1rem;color:#d2a679;margin-bottom:.4rem;">Qualcomm SA8295P</div>
-      <table style="font-size:.82rem;width:100%;">
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>5 nm (TSMC)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Kryo 5 octa-core (3.0 GHz)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Adreno 740</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rim .3rem .1rem 0;">RTOS</td><td>QNX Neutrino 8.0 (hypervisor)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS + ADAS guest VMs</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>Integrated CANFD controller</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>virtio + PCIe passthrough</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>GM Ultifi, Toyota Arene, Panasonic IVI</td></tr>
-      </table>
+  </div>
+  <div class="qa">
+    <div class="qa-q">Why does a device attach need both <code>resmgr_connect_funcs_t</code> and <code>resmgr_io_funcs_t</code>?</div>
+    <div class="qa-a">
+      <p>They're two distinct function tables in the real QNX API: connect functions
+      (<code>open</code>, <code>unlink</code>, <code>rename</code>, …) fire once per pathname
+      resolution event, io functions (<code>read</code>, <code>write</code>, <code>devctl</code>, …)
+      fire per already-open handle. I originally collapsed this into one made-up table
+      (<code>iofunc_funcs_t</code>) that doesn't exist in the real headers — it compiled because the
+      parameter type is effectively opaque, but it was structurally wrong. The fix was two real,
+      separate tables populated by <code>iofunc_func_init()</code> and passed straight through to
+      <code>resmgr_attach()</code>.</p>
     </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-      <div style="font-weight:700;font-size:1rem;color:#3fb950;margin-bottom:.4rem;">Renesas R-Car S4</div>
-      <table style="font-size:.82rem;width:100%;">
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>16 nm (TSMC)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A55 octa-core (1.2 GHz)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>PowerVR GE8300</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX or FreeRTOS (no hypervisor)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>Not typical — gateway/cluster focus</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>4× native CANFD controllers</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>Shared memory (ICCOM driver)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Toyota, Honda, Stellantis gateways</td></tr>
-      </table>
+  </div>
+  <div class="qa">
+    <div class="qa-q">What's an OCB and why does <code>io_read</code> check <code>ocb->offset</code>?</div>
+    <div class="qa-a">
+      <p>The Open Control Block is allocated once per <code>open()</code> call and tracks per-handle
+      state — file position, flags. Since each device here always returns one fixed string per
+      "file," <code>io_read</code> uses <code>ocb->offset</code> as a one-shot flag: first read
+      returns the formatted string, any subsequent read on the same fd returns EOF
+      (<code>_RESMGR_NPARTS(0)</code>), matching how <code>cat</code> expects a pseudo-file to
+      behave.</p>
     </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-      <div style="font-weight:700;font-size:1rem;color:#bc8ce8;margin-bottom:.4rem;">NXP i.MX 8QM</div>
-      <table style="font-size:.82rem;width:100%;">
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>28 nm (Samsung)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A72 dual + A53 quad</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>Vivante GC7000XSVX</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>QNX or Zephyr on Cortex-M4</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>AAOS on A72 cores</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>3× native CAN (FLEXCAN)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>RPMSG / RPMsg-lite over MU</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Audi cluster, Ford IVI, VW MIB3</td></tr>
-      </table>
-    </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-      <div style="font-weight:700;font-size:1rem;color:#f85149;margin-bottom:.4rem;">TI TDA4VM (Jacinto 7)</div>
-      <table style="font-size:.82rem;width:100%;">
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Process</td><td>16 nm (TSMC)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CPU</td><td>Cortex-A72 dual + R5F dual</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">GPU</td><td>PowerVR Series8XE</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">RTOS</td><td>TI-RTOS / FreeRTOS on R5F, Linux on A72</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Android</td><td>Rare — ADAS / domain controller focus</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">CAN</td><td>6× native CANFD (MCAN)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">VM transport</td><td>IPC via RPMessage (TI SDK)</td></tr>
-        <tr><td style="color:var(--muted);padding:.1rem .3rem .1rem 0;">Found in</td><td>Toyota ADAS, Bosch radar, Aptiv</td></tr>
-      </table>
-    </div>
-
   </div>
 
-  <!-- ══════════════════════════════════════════════════════════════════
-       LAYER-BY-LAYER PORT TABLE
-  ══════════════════════════════════════════════════════════════════ -->
-  <h2>Layer-by-layer porting analysis</h2>
+  <h2>The debugging story</h2>
+  <p>Five real bugs, found only once I stopped testing against the Linux <code>HOST=1</code> stub and ran the actual cross-compiled binary on QNX SDP 8.0 under QEMU:</p>
 
-  <!-- ── 1. CAN Interface ─────────────────────────────────────────── -->
-  <h3>1. CAN Interface (<code>can_simulator.c</code> → real driver)</h3>
-  <table>
-    <tr>
-      <th>SoC</th>
-      <th>Change type</th>
-      <th>What changes in <code>can_simulator.c</code></th>
-      <th>New features / notes</th>
-    </tr>
-    <tr>
-      <td><strong>SA8295P</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Replace tick loop body with <code>open("/dev/can1")</code> + <code>read(fd, &amp;frame, 16)</code>. SA8295P exposes CANFD as <code>/dev/can0</code>–<code>/dev/can3</code> via QNX CANFD driver.</td>
-      <td>CANFD frames up to 64 bytes — <code>PropValue</code> union stays the same since vehicle signals fit in 4 bytes.</td>
-    </tr>
-    <tr>
-      <td><strong>Renesas R-Car S4</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Replace tick loop with Renesas RCANFD driver read. Device node: <code>/dev/rcan0</code>–<code>/dev/rcan3</code>. Frame struct is identical to Linux <code>can_frame</code>.</td>
-      <td><strong>4 native CANFD channels</strong> — you can route different signal groups (powertrain, chassis, body) to different channels and merge them in <code>can_sim_tick()</code>.</td>
-    </tr>
-    <tr>
-      <td><strong>NXP i.MX 8QM</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Use NXP FLEXCAN driver. Device <code>/dev/can0</code>. Frame struct: <code>struct can_frame</code> (Linux socketCAN compatible).</td>
-      <td>FLEXCAN supports only Classic CAN 2.0B (not FD). Max payload 8 bytes — no change needed in <code>VehicleMessage</code>. Must set baud rate via <code>ioctl(SIOCSCANGPIOSET)</code>.</td>
-    </tr>
-    <tr>
-      <td><strong>TI TDA4VM</strong></td>
-      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
-      <td>TDA4VM runs TI-RTOS on R5F cores; no QNX. CAN is read via TI MCAN driver using <strong>PRSDK APIs</strong> (<code>MCAN_getData()</code>). The R5F firmware sends decoded signals to the A72 Linux side via RPMessage IPC.</td>
-      <td>Must port <code>can_sim_tick()</code> logic to TI-RTOS task model. No <code>usleep</code> — use <code>Task_sleep()</code> (BIOS) or <code>vTaskDelay()</code> (FreeRTOS).</td>
-    </tr>
-  </table>
-
-  <!-- ── 2. Resource Manager ──────────────────────────────────────── -->
-  <h3>2. QNX Resource Manager (<code>vehicle_resmgr.c</code>)</h3>
-  <table>
-    <tr>
-      <th>SoC</th>
-      <th>Change type</th>
-      <th>What changes</th>
-      <th>New features / notes</th>
-    </tr>
-    <tr>
-      <td><strong>SA8295P</strong></td>
-      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
-      <td>Zero changes. Same QNX SDP 8.0 APIs, same dispatch model, same <code>/dev/vehicle/*</code> paths. Recompile with <code>qcc -Vgcc_ntox86_64</code> → <code>qcc -Vgcc_ntoaarch64le</code> for ARM64 target.</td>
-      <td>SA8295P is AArch64 — change <code>Makefile</code> target variant only. All resmgr code is architecture-agnostic C.</td>
-    </tr>
-    <tr>
-      <td><strong>Renesas R-Car S4</strong></td>
-      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
-      <td>If running QNX Neutrino on R-Car S4 (supported via QNX BSP for R-Car Gen3/Gen4), the dispatch loop, <code>iofunc_attr</code>, and <code>io_read</code> handler are identical.</td>
-      <td>Renesas provides a QNX BSP (Board Support Package) — you plug it in, recompile for AArch64, and <code>/dev/vehicle/*</code> works unchanged.</td>
-    </tr>
-    <tr>
-      <td><strong>NXP i.MX 8QM</strong></td>
-      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
-      <td>QNX runs on the A72 cluster. Same QNX APIs. Recompile for AArch64. The resmgr code is unchanged.</td>
-      <td>i.MX 8QM has a Cortex-M4F safety core running Zephyr for ISO 26262 ASIL B tasks. You might expose a second set of device nodes from the M4 side via RPMSG — that would be a new <code>vehicle_resmgr_m4.c</code>.</td>
-    </tr>
-    <tr>
-      <td><strong>TI TDA4VM</strong></td>
-      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
-      <td>No QNX → no resource manager. On A72 (Linux), replace with a <strong>character device driver</strong> (<code>cdev</code>) or a <strong>sysfs</strong> interface exposing <code>/sys/class/vehicle/speed</code>.</td>
-      <td>
-        Linux cdev equivalent:<br>
-        <code>register_chrdev(MAJOR, "vehicle", &amp;fops)</code><br>
-        <code>fops.read</code> = same format_prop logic.<br>
-        The dispatch loop is replaced by the kernel's VFS — you just implement <code>file_operations.read</code>.
-      </td>
-    </tr>
-  </table>
-
-  <!-- ── 3. VM Transport (Bridge) ─────────────────────────────────── -->
-  <h3>3. VM-to-Android Transport (<code>vehicle_bridge.c</code>)</h3>
-  <table>
-    <tr>
-      <th>SoC</th>
-      <th>Change type</th>
-      <th>What changes in <code>vehicle_bridge.c</code></th>
-      <th>New features / notes</th>
-    </tr>
-    <tr>
-      <td><strong>SA8295P</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Replace TCP socket with <strong>QNX virtio channel</strong>. Open <code>/dev/qvm/guest0/virtio0</code>, write <code>VehicleMessage</code> structs directly. The <code>bridge_send()</code> function changes from <code>send()</code> to <code>write()</code>. <code>bridge_connect()</code> becomes <code>open()</code>.</td>
-      <td>
-        Virtio is zero-copy shared memory — latency drops from ~1 ms (TCP loopback) to ~10 µs.<br>
-        <code>MSG_NOSIGNAL</code> flag is dropped (write to virtio never raises SIGPIPE).<br>
-        Reconnect logic simplifies: the channel is always open while the hypervisor is running.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Renesas R-Car S4</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Renesas uses <strong>ICCOM (Inter-Core Communication)</strong> over shared SRAM between QNX and Linux/RCAR HYPERVISOR partitions. Replace TCP with <code>iccom_send(channel, &amp;msg, sizeof(msg))</code>.</td>
-      <td>
-        ICCOM channels are named integer IDs (e.g. channel 0 = powertrain, 1 = body).<br>
-        <code>VehicleMessage</code> struct stays identical — only the transport call changes.<br>
-        <strong>NEW:</strong> Multi-channel routing — send speed/gear on channel 0, door lock on channel 1 for prioritisation.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>NXP i.MX 8QM</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>NXP uses <strong>RPMSG / RPMsg-lite</strong> over Messaging Unit (MU) hardware registers between A72 (QNX) and M4 (Zephyr). Replace TCP with <code>rpmsg_send(ept, &amp;msg, sizeof(msg))</code>.</td>
-      <td>
-        RPMsg endpoints are created at boot via device tree overlays.<br>
-        Max RPMsg payload is 496 bytes — <code>VehicleMessage</code> at 20 bytes fits easily.<br>
-        <strong>NEW:</strong> The M4 core can act as a CAN-to-RPMsg gateway, decoupling real-time CAN reads from the QNX application core.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>TI TDA4VM</strong></td>
-      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
-      <td>TI uses <strong>RPMessage</strong> (different from NXP RPMsg — TI's own implementation) between R5F and A72. No QNX, no Android VHAL. The bridge becomes a Linux <code>rpmsg_client</code> kernel module or user-space <code>ti-ipc</code> library call.</td>
-      <td>
-        <strong>NEW:</strong> <code>VehicleMessage</code> struct can be reused on the wire — define it in a shared header in the TI SDK <code>ipc_echo_test</code> style.<br>
-        On A72 Linux side: read from <code>/dev/rpmsg0</code> device node.
-      </td>
-    </tr>
-  </table>
-
-  <!-- ── 4. Android VHAL Bridge ────────────────────────────────────── -->
-  <h3>4. Android VHAL Bridge (<code>vhal_bridge.cpp</code> + Java service)</h3>
-  <table>
-    <tr>
-      <th>SoC</th>
-      <th>Change type</th>
-      <th>What changes</th>
-      <th>New features / notes</th>
-    </tr>
-    <tr>
-      <td><strong>SA8295P</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Replace TCP <code>accept()</code>/<code>recv()</code> loop in <code>bridge_thread()</code> with a <code>read()</code> on the virtio char device (<code>/dev/virtio-ports/vhal0</code>). JNI callbacks, <code>VehicleMessage</code> framing, and all Java code are unchanged.</td>
-      <td>
-        <strong>NEW — Multiple Android VMs:</strong> SA8295P can host a second Android VM for the rear-seat display. You'd open a second virtio port (<code>/dev/virtio-ports/rear0</code>) and publish a subset of properties (media state, AC) to it.<br>
-        <strong>NEW — AIDL VHAL:</strong> Android 13+ AAOS uses AIDL (not HIDL) for VHAL. The <code>CarPropertyManager</code> calls in the Java service must move from deprecated HIDL stubs to the new <code>IVehicle.aidl</code> interface.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Renesas R-Car S4</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Replace TCP server with ICCOM reader on Android side. Since R-Car S4 typically doesn't run Android, this layer may run on a companion R-Car H3 IVI chip instead. <code>vhal_bridge.cpp</code> reads from <code>/dev/iccom0</code>.</td>
-      <td>
-        <strong>NEW:</strong> Renesas R-Car S4 is a <em>gateway</em> SoC — it aggregates multiple CAN buses and forwards via Automotive Ethernet (100BASE-T1 / 1000BASE-T1) to the IVI SoC. You'd add an Ethernet receiver in <code>vhal_bridge.cpp</code> in place of TCP, using the same <code>VehicleMessage</code> struct over UDP multicast.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>NXP i.MX 8QM</strong></td>
-      <td><span style="color:#3fb950;font-weight:700;">REUSE</span></td>
-      <td>i.MX 8QM runs Android AAOS on the A72 cores. If QNX and Android run as separate processes (no hypervisor — just partitioned cores), TCP loopback between them still works on the same chip. The entire Android side is unchanged.</td>
-      <td>
-        <strong>NEW — Cortex-M4 safety island:</strong> The M4 can run a watchdog that monitors VHAL property staleness. If <code>VhalStore</code> hasn't been updated in >500 ms, the M4 triggers a warning via GPIO to the cluster MCU.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>TI TDA4VM</strong></td>
-      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
-      <td>No Android — TDA4VM is an ADAS SoC. Replace the VHAL bridge with a <strong>ROS 2 publisher</strong> (robotics middleware used in autonomous driving stacks) or a <strong>DDS topic</strong> (AUTOSAR AP). The <code>VehicleMessage</code> struct maps to a ROS 2 message definition.</td>
-      <td>
-        <strong>NEW — AUTOSAR Adaptive Platform:</strong> TI SDK integrates with AUTOSAR AP middleware. Vehicle signals become <code>ara::com</code> service interfaces instead of VHAL properties.<br>
-        <strong>NEW — Camera/Radar fusion:</strong> TDA4VM has dedicated MMA (Matrix Multiplication Accelerator) for sensor fusion. Vehicle speed/gear from CAN are fused with radar data — add a new <code>adas_fusion.c</code> module fed by the same <code>can_sim_tick()</code> output.
-      </td>
-    </tr>
-  </table>
-
-  <!-- ── 5. Build System ────────────────────────────────────────────── -->
-  <h3>5. Build System &amp; Toolchain (<code>Makefile</code>)</h3>
-  <table>
-    <tr>
-      <th>SoC</th>
-      <th>Change type</th>
-      <th>What changes in Makefile</th>
-    </tr>
-    <tr>
-      <td><strong>SA8295P</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Change <code>CC := qcc -Vgcc_ntox86_64</code> → <code>qcc -Vgcc_ntoaarch64le</code>. Add <code>-mcpu=cortex-a78</code>. All source files and logic unchanged.</td>
-    </tr>
-    <tr>
-      <td><strong>Renesas R-Car S4</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Use Renesas QNX BSP toolchain: <code>CC := qcc -Vgcc_ntoaarch64le</code> with BSP sysroot. Add <code>-I$(RCAR_BSP)/include</code> and link <code>-liccom</code>.</td>
-    </tr>
-    <tr>
-      <td><strong>NXP i.MX 8QM</strong></td>
-      <td><span style="color:#e3b341;font-weight:700;">MODIFY</span></td>
-      <td>Use NXP QNX BSP: <code>qcc -Vgcc_ntoaarch64le</code>. Add <code>-I$(IMX_BSP)/include</code> and link <code>-lrpmsg</code>. For the M4 side: separate CMake build using NXP MCUXpresso SDK.</td>
-    </tr>
-    <tr>
-      <td><strong>TI TDA4VM</strong></td>
-      <td><span style="color:#f85149;font-weight:700;">REWRITE</span></td>
-      <td>Completely different build system. R5F firmware: TI CGT compiler (<code>tiarmclang</code>) via <code>gmake</code> with TI PDK/PRSDK Makefiles. A72 Linux: CMake with Yocto SDK sysroot (<code>aarch64-linux-gnu-gcc</code>).</td>
-    </tr>
-  </table>
-
-  <!-- ══════════════════════════════════════════════════════════════════
-       FEATURE MATRIX
-  ══════════════════════════════════════════════════════════════════ -->
-  <h2>Feature matrix across SoCs</h2>
-  <table>
-    <tr>
-      <th>Feature</th>
-      <th>SA8155P<br><small>(this project)</small></th>
-      <th>SA8295P</th>
-      <th>R-Car S4</th>
-      <th>i.MX 8QM</th>
-      <th>TDA4VM</th>
-    </tr>
-    <tr>
-      <td><code>/dev/vehicle/*</code> POSIX interface</td>
-      <td style="color:#3fb950;">✓ QNX resmgr</td>
-      <td style="color:#3fb950;">✓ reuse</td>
-      <td style="color:#3fb950;">✓ reuse (QNX BSP)</td>
-      <td style="color:#3fb950;">✓ reuse</td>
-      <td style="color:#e3b341;">→ Linux cdev</td>
-    </tr>
-    <tr>
-      <td>CAN frame ingestion</td>
-      <td style="color:#e3b341;">Simulated</td>
-      <td style="color:#3fb950;">Native CANFD</td>
-      <td style="color:#3fb950;">4× native CANFD</td>
-      <td style="color:#3fb950;">3× FLEXCAN</td>
-      <td style="color:#3fb950;">6× MCAN (CANFD)</td>
-    </tr>
-    <tr>
-      <td>VM transport to Android</td>
-      <td style="color:#e3b341;">TCP socket</td>
-      <td style="color:#3fb950;">virtio (µs latency)</td>
-      <td style="color:#e3b341;">ICCOM / Eth</td>
-      <td style="color:#e3b341;">RPMsg over MU</td>
-      <td style="color:#f85149;">N/A (no Android)</td>
-    </tr>
-    <tr>
-      <td>VHAL property injection</td>
-      <td style="color:#e3b341;">VhalStore stub</td>
-      <td style="color:#3fb950;">Real CarPropertyManager (AIDL)</td>
-      <td style="color:#e3b341;">Companion IVI chip</td>
-      <td style="color:#3fb950;">Real CarPropertyManager</td>
-      <td style="color:#f85149;">ROS2 / DDS / AUTOSAR AP</td>
-    </tr>
-    <tr>
-      <td>Safety core / ASIL partition</td>
-      <td style="color:#f85149;">None</td>
-      <td style="color:#3fb950;">QNX ASIL-D partition</td>
-      <td style="color:#3fb950;">CR52 safety core</td>
-      <td style="color:#3fb950;">M4F safety island</td>
-      <td style="color:#3fb950;">R5F dual-core lockstep</td>
-    </tr>
-    <tr>
-      <td>Multi-display / rear seat</td>
-      <td style="color:#f85149;">No</td>
-      <td style="color:#3fb950;">Second Android VM</td>
-      <td style="color:#f85149;">No (gateway role)</td>
-      <td style="color:#e3b341;">Possible via 2nd display</td>
-      <td style="color:#f85149;">No</td>
-    </tr>
-    <tr>
-      <td>OTA update framework</td>
-      <td style="color:#f85149;">Not in this project</td>
-      <td style="color:#3fb950;">QNX SafeUpdate + Android A/B</td>
-      <td style="color:#e3b341;">Renesas SOTA client</td>
-      <td style="color:#e3b341;">NXP MCUBoot + Android A/B</td>
-      <td style="color:#e3b341;">TI OTA via Linux RAUC</td>
-    </tr>
-    <tr>
-      <td><code>VehicleMessage</code> struct</td>
-      <td style="color:#3fb950;">✓ defined</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#e3b341;">reuse struct, wrap in ROS msg</td>
-    </tr>
-    <tr>
-      <td>Unit tests (<code>test_can_sim.c</code>)</td>
-      <td style="color:#3fb950;">✓ Linux CI</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#3fb950;">reuse unchanged</td>
-      <td style="color:#e3b341;">reuse, change RTOS timer mocks</td>
-    </tr>
-  </table>
-
-  <!-- ══════════════════════════════════════════════════════════════════
-       MIGRATION GUIDE
-  ══════════════════════════════════════════════════════════════════ -->
-  <h2>Concrete migration guide — SA8155P → SA8295P</h2>
-  <p>This is the most likely upgrade path (same QNX + Android AAOS stack, newer chip). Here is the exact diff needed:</p>
-
-  <h3>Step 1 — Makefile: change target architecture</h3>
-  <pre><code>- CC := qcc -Vgcc_ntox86_64
-+ CC := qcc -Vgcc_ntoaarch64le
-+ CFLAGS += -mcpu=cortex-a78 -march=armv8.2-a</code></pre>
-
-  <h3>Step 2 — can_simulator.c: swap tick loop for real CAN read</h3>
-  <pre><code>- /* Simulated tick */
-- static int tick = 0; tick++;
-- switch ((tick / 10) % 4) { ... }
-
-+ /* Real SA8295P integrated CANFD */
-+ static int fd = -1;
-+ if (fd &lt; 0) fd = open("/dev/can0", O_RDWR);
-+
-+ struct canfd_frame frame;
-+ ssize_t n = read(fd, &amp;frame, CANFD_MTU);
-+ if (n &lt; 0) return 0;
-+
-+ /* Decode per DBC signal layout */
-+ switch (frame.can_id) {
-+ case 0x0D0: out->prop_id = PROP_VEHICLE_SPEED;
-+             out->value.f = ((frame.data[0]&lt;&lt;8)|frame.data[1]) * 0.01f;
-+             return PROP_VEHICLE_SPEED;
-+ case 0x100: out->prop_id = PROP_GEAR_SELECTION;
-+             out->value.i = frame.data[0];
-+             return PROP_GEAR_SELECTION;
-+ /* ... */
-+ }</code></pre>
-
-  <h3>Step 3 — vehicle_bridge.c: swap TCP for virtio</h3>
-  <pre><code>- s_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-- connect(s_sockfd, &amp;addr, sizeof(addr));
-
-+ s_sockfd = open("/dev/qvm/guest0/virtio0", O_RDWR);
-+ /* No connect() needed — virtio channel is always open */
-
-  /* bridge_send() — only the write call changes */
-- send(s_sockfd, msg, sizeof(*msg), MSG_NOSIGNAL);
-+ write(s_sockfd, msg, sizeof(*msg));</code></pre>
-
-  <h3>Step 4 — vhal_bridge.cpp: swap TCP server for virtio client read</h3>
-  <pre><code>- int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-- bind(server_fd, &amp;addr, sizeof(addr));
-- listen(server_fd, 1);
-- int client = accept(server_fd, nullptr, nullptr);
-
-+ int virt_fd = open("/dev/virtio-ports/vhal0", O_RDONLY);
-+ /* No accept() — virtio port is a direct pipe */
-
-  /* Inner receive loop — unchanged */
-- recv(client, &amp;msg, sizeof(msg), MSG_WAITALL);
-+ read(virt_fd, &amp;msg, sizeof(msg));</code></pre>
-
-  <h3>Step 5 — VhalBridgeService.java: upgrade to AIDL VHAL (Android 13+)</h3>
-  <pre><code>// Old (HIDL — Android 12 and earlier):
-// IVehicle.getValues(propRequest, callback);
-
-// New (AIDL — Android 13+):
-import android.hardware.automotive.vehicle.IVehicle;
-import android.hardware.automotive.vehicle.VehiclePropValue;
-
-// In onFloatProperty():
-- VhalStore.getInstance().putFloat(propId, value);
-+ VehiclePropValue prop = new VehiclePropValue();
-+ prop.prop      = propId;
-+ prop.value     = new RawPropValues();
-+ prop.value.floatValues = new float[]{ value };
-+ mVehicleService.setValues(mCallback, List.of(prop));</code></pre>
-
-  <div class="callout green">
-    <strong>Summary for SA8155P → SA8295P:</strong> ~40 lines of code change across 3 files. All business logic (<code>format_prop</code>, <code>io_read</code>, <code>VehicleAttr</code>, JNI callbacks, <code>VhalStore</code>, unit tests) is reused without modification.
+  <div class="qa">
+    <div class="qa-q">Tell me about a hard bug you had to debug.</div>
+    <div class="qa-a">
+      <p><code>cat /dev/vehicle/speed</code> returned nothing — no error, no crash, just silence,
+      exit code 0. The process was alive and correctly blocked on <code>MsgReceive</code>, so the
+      resmgr itself wasn't broken. I added an <code>fprintf</code> straight inside <code>io_read</code>
+      and confirmed it was computing the right string and setting the iov correctly — so the bug
+      wasn't in my logic, it was in what happens <em>after</em> my function returns.</p>
+      <p>Working through it against the genuine QNX headers (once the real SDP was installed)
+      turned up two independent, compounding causes:</p>
+      <ol>
+        <li><code>resmgr_attr_t.nparts_max</code> was left at 0 (from a <code>memset</code>), so
+        the reply <code>iov[]</code> array had zero allocated capacity.</li>
+        <li><code>_RESMGR_NPARTS(n)</code> only tells the framework how many iov parts to send —
+        the actual byte count handed back to the caller's <code>read()</code> comes from
+        <code>ctp->status</code>, set via <code>_IO_SET_READ_NBYTES()</code>. I was never calling
+        it, so <code>ctp->status</code> stayed 0 and every read reported instant EOF regardless of
+        what was in the iov.</li>
+      </ol>
+      <p>A third, related bug surfaced right after: one property (<code>gear</code>) intermittently
+      came back as zero bytes instead of garbage or nothing — <code>SETIOV</code> was pointing the
+      reply at a plain stack-local buffer, but the framework copies that memory out <em>after</em>
+      the function returns, so it could get clobbered depending on what else was on the stack by
+      then. Making the buffer <code>static</code> fixed it, since the dispatch loop here is
+      single-threaded.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">Why didn't the Linux host stub build catch any of this?</div>
+    <div class="qa-a">
+      <p>Because the stub's <code>dispatch_block()</code> just returns <code>NULL</code>
+      immediately — it was written to let pure logic (the CAN simulator, the TCP bridge) compile
+      and run for CI without a QNX license, not to model real resmgr reply semantics. It's a
+      genuinely useful fast-iteration loop, but it can't catch anything about the actual
+      IPC/reply contract — that class of bug only exists where a real dispatch loop actually runs.
+      That's the real argument for testing on the genuine target, not just "it compiles against a
+      mock header."</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">Why did .read64/.write64 need to be wired up separately from .read/.write?</div>
+    <div class="qa-a">
+      <p>QNX 8's client-side library defaults to sending <code>_IO_READ64</code>/<code>_IO_WRITE64</code>
+      messages (large-file-safe variants), not the older <code>_IO_READ</code>/<code>_IO_WRITE</code>.
+      <code>resmgr_io_funcs_t</code> has separate slots for both pairs. Leaving <code>.read64</code>
+      unset meant every read fell through to a default handler that just reports EOF — no error,
+      no warning, just silently wrong behavior. It's the kind of API surface you only learn about
+      by reading the real headers or hitting it in practice.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">How did you verify the fix, beyond "it compiles"?</div>
+    <div class="qa-a">
+      <p>Cross-compiled with the real <code>qcc</code> toolchain, booted a QNX image under QEMU via
+      <code>mkqnximage</code>, scp'd the binary in over SSH, and ran <code>cat</code>/<code>dd</code>
+      against all four device nodes directly on the target. Then I wrote a small Python script
+      (<code>tools/fake_vhal_listener.py</code>) that stands in for the Android VHAL bridge,
+      listening on the same TCP port the real bridge would, to confirm the wire protocol end-to-end
+      without needing an Android emulator at all.</p>
+    </div>
   </div>
 
-  <h2>Concrete migration guide — SA8155P → NXP i.MX 8QM</h2>
-
-  <h3>New module needed: RPMsg transport (<code>vehicle_bridge_rpmsg.c</code>)</h3>
-  <pre><code>/* Replaces vehicle_bridge.c on i.MX 8QM */
-#include &lt;rpmsg_lite.h&gt;
-
-static struct rpmsg_lite_instance *s_rpmsg = NULL;
-static struct rpmsg_lite_endpoint *s_ept   = NULL;
-
-int bridge_connect(void) {
-    s_rpmsg = rpmsg_lite_master_init(RPMSG_SHMEM_BASE, RPMSG_SHMEM_SIZE,
-                                      RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
-    s_ept   = rpmsg_lite_create_ept(s_rpmsg, LOCAL_EPT_ADDR,
-                                    rpmsg_queue_rx_cb, NULL);
-    return s_rpmsg ? 0 : -1;
-}
-
-int bridge_send(const VehicleMessage *msg) {
-    return rpmsg_lite_send(s_rpmsg, s_ept, REMOTE_EPT_ADDR,
-                           (char *)msg, sizeof(*msg), RL_BLOCK);
-}</code></pre>
-  <p>
-    <strong>Everything else is unchanged:</strong> <code>vehicle_resmgr.c</code>, <code>vehicle_props.h</code>, <code>can_simulator.c</code>,
-    the Android side, and all unit tests. Only the transport implementation file is swapped.
-    The Makefile adds <code>-lrpmsg_lite</code> and the NXP BSP sysroot.
-  </p>
+  <h2>Design decisions</h2>
+  <div class="qa">
+    <div class="qa-q">Why a raw packed struct over TCP instead of JSON or protobuf?</div>
+    <div class="qa-a">
+      <p>This mirrors real automotive middleware: the actual production transport is a virtio
+      channel or shared memory between the QNX and Android hypervisor guests, which is zero-copy
+      and doesn't want a text-parsing step in the hot path. A TCP socket with the identical wire
+      format is a reasonable emulator-only substitute — swapping it back to virtio later is a
+      one-file change (<code>bridge_send</code>'s <code>send()</code> becomes <code>write()</code>),
+      because the struct layout and framing (<code>magic</code> guard, fixed 20-byte size) don't
+      change.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">What would break this in production, and how would you harden it?</div>
+    <div class="qa-a">
+      <p>No endianness handling — both sides currently must be the same byte order, which is fine
+      for x86_64 QEMU but not guaranteed on real ARM automotive SoCs paired with different hosts;
+      I'd add explicit <code>htonl</code>/wire-format conversion. No authentication or framing
+      recovery beyond a magic-number sanity check — a corrupted stream never resynchronizes. And
+      the CAN simulator's "changed" detection was actually broken until I fixed it: it always
+      reported a property as changed even when the value was identical, quadrupling bridge traffic
+      and would have caused spurious property-changed events downstream in a real VHAL consumer.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">Why maintain two build targets (HOST=1 stub vs. real qcc) instead of just building on QNX?</div>
+    <div class="qa-a">
+      <p>Iteration speed. Compiling and running the CAN simulator and bridge logic on plain Linux
+      takes a second and needs no license, QEMU, or SSH round-trip — good for rapid logic changes
+      and CI. But the stub can only ever prove the pure logic; anything about actual QNX resmgr
+      semantics (which is where every real bug in this project lived) has to be verified against
+      the genuine SDP and a real dispatch loop. Neither target replaces the other.</p>
+    </div>
+  </div>
 
 </div>
 
