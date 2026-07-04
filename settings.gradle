@@ -1,0 +1,2 @@
+rootProject.name = "qnx-vehicle-resmgr"
+include ':android-vhal-bridge'

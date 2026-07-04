@@ -25,12 +25,13 @@ public class VhalBridgeService extends Service {
 
     private static final String TAG = "VhalBridgeService";
 
-    // VHAL property IDs — match vehicle_props.h
-    private static final int PROP_VEHICLE_SPEED   = 0x11600207;
-    private static final int PROP_GEAR_SELECTION  = 0x11400400;
-    private static final int PROP_ENGINE_OIL_TEMP = 0x11600303;
-    private static final int PROP_DOOR_LOCK       = 0x11200102;
-    private static final int PROP_FUEL_LEVEL      = 0x11600306;
+    // VHAL property IDs — match vehicle_props.h. Package-private so
+    // MainActivity's dashboard can read the same constants when polling VhalStore.
+    static final int PROP_VEHICLE_SPEED   = 0x11600207;
+    static final int PROP_GEAR_SELECTION  = 0x11400400;
+    static final int PROP_ENGINE_OIL_TEMP = 0x11600303;
+    static final int PROP_DOOR_LOCK       = 0x11200102;
+    static final int PROP_FUEL_LEVEL      = 0x11600306;
 
     static {
         System.loadLibrary("vhal_bridge");   // libvhal_bridge.so
