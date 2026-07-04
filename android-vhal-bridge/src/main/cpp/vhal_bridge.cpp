@@ -9,7 +9,10 @@
  *   QNX vehicle_resmgrd
  *       └─ TCP 9090 ──► vhal_bridge.cpp (listen)
  *                            └─ JNI ──► VhalBridgeService.java
- *                                           └─ CarPropertyManager.set()
+ *                                           └─ translated into a VehiclePropValue
+ *                                              (see VehiclePropValue.java) and
+ *                                              cached in VhalStore, mirroring
+ *                                              CarPropertyManager.set()
  */
 
 #include <jni.h>
@@ -33,6 +36,7 @@
 #define PROP_GEAR_SELECTION 0x11400400
 #define PROP_ENGINE_OIL_TEMP 0x11600303
 #define PROP_DOOR_LOCK      0x11200102
+#define PROP_FUEL_LEVEL     0x11600306
 
 typedef union { float f; int32_t i; uint8_t b; } PropValue;
 
@@ -87,6 +91,7 @@ static void *bridge_thread(void *arg) {
             switch (msg.prop_id) {
             case PROP_VEHICLE_SPEED:
             case PROP_ENGINE_OIL_TEMP:
+            case PROP_FUEL_LEVEL:
                 env->CallVoidMethod(s_callback, s_onPropF,
                                     (jint)msg.prop_id, (jfloat)msg.value.f);
                 break;

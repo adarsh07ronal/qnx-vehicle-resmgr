@@ -17,10 +17,11 @@
 #include <stdint.h>
 
 /* ── Internal state ──────────────────────────────────────────────────── */
-static float    s_speed_kmh   = 0.0f;
-static int32_t  s_gear        = GEAR_NEUTRAL;
-static float    s_oil_temp_c  = 20.0f;   /* cold start */
-static uint8_t  s_door_locked = 1;
+static float    s_speed_kmh    = 0.0f;
+static int32_t  s_gear         = GEAR_NEUTRAL;
+static float    s_oil_temp_c   = 20.0f;   /* cold start */
+static uint8_t  s_door_locked  = 1;
+static float    s_fuel_pct     = 100.0f;  /* full tank */
 
 static int64_t monotonic_ms(void) {
     struct timespec ts;
@@ -31,10 +32,11 @@ static int64_t monotonic_ms(void) {
 /* ── Public API ──────────────────────────────────────────────────────── */
 
 void can_sim_init(void) {
-    s_speed_kmh  = 0.0f;
-    s_gear       = GEAR_PARK;
-    s_oil_temp_c = 20.0f;
+    s_speed_kmh   = 0.0f;
+    s_gear        = GEAR_PARK;
+    s_oil_temp_c  = 20.0f;
     s_door_locked = 1;
+    s_fuel_pct    = 100.0f;
 }
 
 /*
@@ -49,6 +51,7 @@ uint32_t can_sim_tick(VehicleMessage *out) {
     static int32_t s_last_gear    = -1;
     static float   s_last_oil_temp = -1.0f;
     static int32_t s_last_door    = -1;
+    static float   s_last_fuel    = -1.0f;
 
     tick++;
 
@@ -56,7 +59,7 @@ uint32_t can_sim_tick(VehicleMessage *out) {
     out->timestamp_ms = monotonic_ms();
 
     /* Every 10 ticks (~1 s): cycle through properties */
-    switch ((tick / 10) % 4) {
+    switch ((tick / 10) % 5) {
 
     case 0:  /* Speed ramp 0→120 km/h */
         s_speed_kmh += 2.0f;
@@ -95,6 +98,16 @@ uint32_t can_sim_tick(VehicleMessage *out) {
         out->value.b  = s_door_locked;
         return PROP_DOOR_LOCK;
 
+    case 4:  /* Fuel drains slowly, faster while driving */
+        s_fuel_pct -= (s_speed_kmh > 5.0f) ? 0.1f : 0.02f;
+        if (s_fuel_pct < 0.0f) s_fuel_pct = 0.0f;
+
+        if (s_fuel_pct == s_last_fuel) return 0;
+        s_last_fuel   = s_fuel_pct;
+        out->prop_id  = PROP_FUEL_LEVEL;
+        out->value.f  = s_fuel_pct;
+        return PROP_FUEL_LEVEL;
+
     default:
         return 0;
     }
@@ -102,7 +115,8 @@ uint32_t can_sim_tick(VehicleMessage *out) {
 
 /* ── Direct property reads (called by resmgr io_read handlers) ──────── */
 
-float   can_sim_get_speed(void)     { return s_speed_kmh;   }
-int32_t can_sim_get_gear(void)      { return s_gear;         }
-float   can_sim_get_oil_temp(void)  { return s_oil_temp_c;  }
-uint8_t can_sim_get_door_lock(void) { return s_door_locked; }
+float   can_sim_get_speed(void)      { return s_speed_kmh;   }
+int32_t can_sim_get_gear(void)       { return s_gear;         }
+float   can_sim_get_oil_temp(void)   { return s_oil_temp_c;  }
+uint8_t can_sim_get_door_lock(void)  { return s_door_locked; }
+float   can_sim_get_fuel_level(void) { return s_fuel_pct;    }

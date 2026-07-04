@@ -22,6 +22,7 @@ PROP_VEHICLE_SPEED   = 0x11600207
 PROP_GEAR_SELECTION  = 0x11400400
 PROP_ENGINE_OIL_TEMP = 0x11600303
 PROP_DOOR_LOCK       = 0x11200102
+PROP_FUEL_LEVEL      = 0x11600306
 
 GEAR_NAMES = {0: "NEUTRAL", 1: "REVERSE", 2: "PARK", 4: "DRIVE"}
 
@@ -30,11 +31,12 @@ PROP_NAMES = {
     PROP_GEAR_SELECTION:  "GEAR_SELECTION",
     PROP_ENGINE_OIL_TEMP: "ENGINE_OIL_TEMP",
     PROP_DOOR_LOCK:       "DOOR_LOCK",
+    PROP_FUEL_LEVEL:      "FUEL_LEVEL",
 }
 
 
 def decode_value(prop_id, raw4):
-    if prop_id in (PROP_VEHICLE_SPEED, PROP_ENGINE_OIL_TEMP):
+    if prop_id in (PROP_VEHICLE_SPEED, PROP_ENGINE_OIL_TEMP, PROP_FUEL_LEVEL):
         return struct.unpack("<f", raw4)[0]
     if prop_id == PROP_GEAR_SELECTION:
         gear = struct.unpack("<i", raw4)[0]

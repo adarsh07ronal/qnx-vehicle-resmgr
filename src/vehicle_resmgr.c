@@ -1,5 +1,5 @@
 /* vehicle_resmgr.c
- * QNX Neutrino Resource Manager — /dev/vehicle/{speed,gear,oil_temp,door_lock}
+ * QNX Neutrino Resource Manager — /dev/vehicle/{speed,gear,oil_temp,door_lock,fuel}
  *
  * Architecture:
  *   ┌─────────────────────────────────────────┐
@@ -9,7 +9,8 @@
  *   │              ├─ /dev/vehicle/speed      │
  *   │              ├─ /dev/vehicle/gear       │
  *   │              ├─ /dev/vehicle/oil_temp   │
- *   │              └─ /dev/vehicle/door_lock  │
+ *   │              ├─ /dev/vehicle/door_lock  │
+ *   │              └─ /dev/vehicle/fuel       │
  *   │                     │                  │
  *   │              vehicle_bridge             │
  *   │                     │ TCP socket        │
@@ -47,8 +48,8 @@ typedef struct {
     char          path[64];
 } VehicleAttr;
 
-/* ── Four /dev/vehicle/* devices ─────────────────────────────────────── */
-static VehicleAttr s_devs[4];
+/* ── Five /dev/vehicle/* devices ────────────────────────────────────── */
+static VehicleAttr s_devs[5];
 static dispatch_t *s_dpp;
 
 /* ── Helper: format a property value as ASCII for cat/read ───────────── */
@@ -68,6 +69,8 @@ static int format_prop(uint32_t prop_id, char *buf, size_t len) {
         return snprintf(buf, len, "%.1f C\n", can_sim_get_oil_temp());
     case PROP_DOOR_LOCK:
         return snprintf(buf, len, "%s\n", can_sim_get_door_lock() ? "LOCKED" : "UNLOCKED");
+    case PROP_FUEL_LEVEL:
+        return snprintf(buf, len, "%.1f %%\n", can_sim_get_fuel_level());
     default:
         return snprintf(buf, len, "?\n");
     }
@@ -192,6 +195,8 @@ int main(int argc, char *argv[]) {
                     &s_devs[2], DEV_OIL_TEMP, PROP_ENGINE_OIL_TEMP);
     register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
                     &s_devs[3], DEV_DOOR_LOCK, PROP_DOOR_LOCK);
+    register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
+                    &s_devs[4], DEV_FUEL_LEVEL, PROP_FUEL_LEVEL);
 
     /* ── Start CAN tick thread ── */
     pthread_create(&tick_tid, NULL, can_tick_thread, NULL);

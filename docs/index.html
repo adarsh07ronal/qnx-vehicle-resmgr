@@ -242,9 +242,9 @@
   <p>
     A full-stack embedded demo that connects a <strong>QNX Neutrino RTOS resource manager</strong>
     (the vehicle ECU side) to an <strong>Android Automotive OS VHAL bridge</strong> (the IVI head-unit
-    side) over a TCP socket. It simulates CAN bus vehicle data — speed, gear, oil temperature, door
-    lock — and exposes them both as UNIX-style device files on QNX and as live VHAL properties on
-    Android.
+    side) over a TCP socket. It simulates CAN bus vehicle data — speed, gear, fuel level, oil
+    temperature, door lock — and exposes them both as UNIX-style device files on QNX and as live
+    VHAL properties on Android.
   </p>
 
   <h2>Architecture</h2>
@@ -259,7 +259,8 @@
 │   ├─ /dev/vehicle/speed      ← cat returns "72.00 km/h"             │
 │   ├─ /dev/vehicle/gear       ← cat returns "DRIVE"                  │
 │   ├─ /dev/vehicle/oil_temp   ← cat returns "87.5 C"                 │
-│   └─ /dev/vehicle/door_lock  ← cat returns "LOCKED"                 │
+│   ├─ /dev/vehicle/door_lock  ← cat returns "LOCKED"                 │
+│   └─ /dev/vehicle/fuel       ← cat returns "93.0 %"                 │
 │                     │                                                │
 │              vehicle_bridge.c                                        │
 │              TCP client → 10.0.2.2:9090                              │
@@ -318,7 +319,8 @@ make HOST=1
     <tr><td><code>src/vehicle_bridge.c/h</code></td><td><span class="badge badge-c">C</span></td><td>TCP client that publishes VehicleMessage to Android</td></tr>
     <tr><td><code>src/vehicle_props.h</code></td><td><span class="badge badge-h">H</span></td><td>Shared constants: PROP_* IDs, VehicleMessage struct, device paths</td></tr>
     <tr><td><code>android-vhal-bridge/…/vhal_bridge.cpp</code></td><td><span class="badge badge-cpp">C++</span></td><td>Android NDK TCP listener + JNI glue</td></tr>
-    <tr><td><code>android-vhal-bridge/…/VhalBridgeService.java</code></td><td><span class="badge badge-java">Java</span></td><td>Android Service — receives JNI callbacks, writes to VhalStore</td></tr>
+    <tr><td><code>android-vhal-bridge/…/VhalBridgeService.java</code></td><td><span class="badge badge-java">Java</span></td><td>Android Service — receives JNI callbacks, builds VehiclePropValue events, writes to VhalStore</td></tr>
+    <tr><td><code>android-vhal-bridge/…/VehiclePropValue.java</code></td><td><span class="badge badge-java">Java</span></td><td>Mirrors the real AIDL VehiclePropValue type — the concrete "event" object each callback produces</td></tr>
     <tr><td><code>android-vhal-bridge/…/VhalStore.java</code></td><td><span class="badge badge-java">Java</span></td><td>Thread-safe in-memory property cache (simulates VHAL IPC)</td></tr>
     <tr><td><code>tests/test_can_sim.c</code></td><td><span class="badge badge-c">C</span></td><td>Unit tests — compile and run on Linux CI, no QNX required</td></tr>
     <tr><td><code>Makefile</code></td><td><span class="badge badge-mk">Makefile</span></td><td>Dual-target: QNX cross-compile via qcc + Linux host stub build</td></tr>
@@ -598,6 +600,7 @@ public float getFloat(int propId, float def) {
         <tr><td><code>PROP_GEAR_SELECTION</code></td><td><code>0x11400400</code></td><td>int32</td><td>Matches Android VHAL <code>GEAR_SELECTION</code></td></tr>
         <tr><td><code>PROP_ENGINE_OIL_TEMP</code></td><td><code>0x11600303</code></td><td>float °C</td><td>Matches Android VHAL <code>ENGINE_OIL_TEMP</code></td></tr>
         <tr><td><code>PROP_DOOR_LOCK</code></td><td><code>0x11200102</code></td><td>bool (uint8)</td><td>Matches Android VHAL <code>DOOR_LOCK</code></td></tr>
+        <tr><td><code>PROP_FUEL_LEVEL</code></td><td><code>0x11600306</code></td><td>float %</td><td>Matches Android VHAL <code>FUEL_LEVEL</code></td></tr>
       </table>
 
       <h3><span class="pill">enum</span> VehicleGear</h3>
@@ -632,6 +635,7 @@ public float getFloat(int propId, float def) {
         <tr><td><code>DEV_GEAR</code></td><td><code>"/dev/vehicle/gear"</code></td><td></td></tr>
         <tr><td><code>DEV_OIL_TEMP</code></td><td><code>"/dev/vehicle/oil_temp"</code></td><td></td></tr>
         <tr><td><code>DEV_DOOR_LOCK</code></td><td><code>"/dev/vehicle/door_lock"</code></td><td></td></tr>
+        <tr><td><code>DEV_FUEL_LEVEL</code></td><td><code>"/dev/vehicle/fuel"</code></td><td></td></tr>
         <tr><td><code>BRIDGE_MAGIC</code></td><td><code>0xCAFEBABE</code></td><td>Wire protocol framing guard</td></tr>
         <tr><td><code>BRIDGE_HOST</code></td><td><code>"10.0.2.2"</code></td><td>QEMU host-side alias (Android emulator sees host at this IP)</td></tr>
         <tr><td><code>BRIDGE_PORT</code></td><td><code>9090</code></td><td>TCP port</td></tr>
@@ -656,6 +660,7 @@ public float getFloat(int propId, float def) {
         <tr><td><code>int32_t can_sim_get_gear(void)</code></td><td>Current gear as <code>VehicleGear</code></td></tr>
         <tr><td><code>float can_sim_get_oil_temp(void)</code></td><td>Current oil temperature in °C</td></tr>
         <tr><td><code>uint8_t can_sim_get_door_lock(void)</code></td><td>1 = locked, 0 = unlocked</td></tr>
+        <tr><td><code>float can_sim_get_fuel_level(void)</code></td><td>Current fuel level, 0–100%</td></tr>
       </table>
     </div>
   </div>
@@ -676,6 +681,7 @@ public float getFloat(int propId, float def) {
         <tr><td><code>s_gear</code></td><td><code>int32_t</code></td><td>GEAR_NEUTRAL</td><td>Current gear position</td></tr>
         <tr><td><code>s_oil_temp_c</code></td><td><code>float</code></td><td>20.0</td><td>Engine oil temperature (cold start)</td></tr>
         <tr><td><code>s_door_locked</code></td><td><code>uint8_t</code></td><td>1</td><td>Door lock state (1=locked)</td></tr>
+        <tr><td><code>s_fuel_pct</code></td><td><code>float</code></td><td>100.0</td><td>Fuel level, drains faster while driving (speed &gt; 5 km/h)</td></tr>
       </table>
 
       <h3><span class="pill">function</span> monotonic_ms()</h3>
@@ -785,7 +791,7 @@ public float getFloat(int propId, float def) {
       <h3><span class="pill">globals</span></h3>
       <table>
         <tr><th>Variable</th><th>Type</th><th>Purpose</th></tr>
-        <tr><td><code>s_devs[4]</code></td><td><code>static VehicleAttr</code></td><td>One entry per /dev/vehicle/* node</td></tr>
+        <tr><td><code>s_devs[5]</code></td><td><code>static VehicleAttr</code></td><td>One entry per /dev/vehicle/* node</td></tr>
         <tr><td><code>s_dpp</code></td><td><code>static dispatch_t *</code></td><td>QNX dispatch handle — shared across registrations</td></tr>
       </table>
 
@@ -946,6 +952,7 @@ Java_com_adarsh_vhal_VhalBridgeService_startBridge(JNIEnv *env, jobject thiz) {
         <tr><td><code>PROP_GEAR_SELECTION</code></td><td><code>0x11400400</code></td></tr>
         <tr><td><code>PROP_ENGINE_OIL_TEMP</code></td><td><code>0x11600303</code></td></tr>
         <tr><td><code>PROP_DOOR_LOCK</code></td><td><code>0x11200102</code></td></tr>
+        <tr><td><code>PROP_FUEL_LEVEL</code></td><td><code>0x11600306</code></td></tr>
       </table>
 
       <h3><span class="pill">static block</span> Library loading</h3>
@@ -962,10 +969,17 @@ Java_com_adarsh_vhal_VhalBridgeService_startBridge(JNIEnv *env, jobject thiz) {
       <h3><span class="pill">callbacks</span> JNI-called methods</h3>
       <table>
         <tr><th>Method</th><th>Called for</th><th>Action</th></tr>
-        <tr><td><code>onFloatProperty(int, float)</code></td><td>SPEED, OIL_TEMP</td><td>Logs + writes to VhalStore</td></tr>
-        <tr><td><code>onIntProperty(int, int)</code></td><td>GEAR</td><td>Logs + writes to VhalStore</td></tr>
-        <tr><td><code>onBoolProperty(int, boolean)</code></td><td>DOOR_LOCK</td><td>Logs + writes to VhalStore</td></tr>
+        <tr><td><code>onFloatProperty(int, float)</code></td><td>SPEED, OIL_TEMP, FUEL_LEVEL</td><td>Wraps the value in a <code>VehiclePropValue</code> event, logs it, writes to VhalStore</td></tr>
+        <tr><td><code>onIntProperty(int, int)</code></td><td>GEAR</td><td>Wraps the value in a <code>VehiclePropValue</code> event, logs it, writes to VhalStore</td></tr>
+        <tr><td><code>onBoolProperty(int, boolean)</code></td><td>DOOR_LOCK</td><td>Wraps the value in a <code>VehiclePropValue</code> event, logs it, writes to VhalStore</td></tr>
       </table>
+      <div class="callout">
+        Each callback constructs a <code>new VehiclePropValue(propId, value)</code> — a small class
+        mirroring the real AIDL <code>android.hardware.automotive.vehicle.VehiclePropValue</code>
+        type (prop id, area id, timestamp, value) — so "translate into VehiclePropValue events" is a
+        real object in the code path, not just descriptive text. See
+        <code>VehiclePropValue.java</code>.
+      </div>
     </div>
   </div>
 
@@ -1483,7 +1497,7 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
     <div class="qa-a">
       <p>Cross-compiled with the real <code>qcc</code> toolchain, booted a QNX image under QEMU via
       <code>mkqnximage</code>, scp'd the binary in over SSH, and ran <code>cat</code>/<code>dd</code>
-      against all four device nodes directly on the target. Then I wrote a small Python script
+      against all five device nodes directly on the target. Then I wrote a small Python script
       (<code>tools/fake_vhal_listener.py</code>) that stands in for the Android VHAL bridge,
       listening on the same TCP port the real bridge would, to confirm the wire protocol end-to-end
       without needing an Android emulator at all.</p>

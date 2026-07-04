@@ -12,6 +12,7 @@
 #define PROP_GEAR_SELECTION     0x11400400   /* GEAR_SELECTION        int32      */
 #define PROP_ENGINE_OIL_TEMP    0x11600303   /* ENGINE_OIL_TEMP       float °C   */
 #define PROP_DOOR_LOCK          0x11200102   /* DOOR_LOCK             bool       */
+#define PROP_FUEL_LEVEL         0x11600306   /* FUEL_LEVEL            float %    */
 
 /* ── Gear enum (matches VehicleGear in VHAL) ─────────────────────────── */
 typedef enum {
@@ -43,6 +44,7 @@ typedef struct __attribute__((packed)) {
 #define DEV_GEAR        "/dev/vehicle/gear"
 #define DEV_OIL_TEMP    "/dev/vehicle/oil_temp"
 #define DEV_DOOR_LOCK   "/dev/vehicle/door_lock"
+#define DEV_FUEL_LEVEL  "/dev/vehicle/fuel"
 
 /* ── Bridge socket (connect to Android emulator host) ────────────────── */
 #define BRIDGE_HOST     "10.0.2.2"   /* QEMU host alias → Android emulator */

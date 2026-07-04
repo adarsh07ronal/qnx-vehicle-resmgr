@@ -38,6 +38,9 @@ static void test_initial_state(void) {
 
     TEST("door starts locked");
     ASSERT_EQ(can_sim_get_door_lock(), 1, "door != locked");
+
+    TEST("fuel starts full (100%)");
+    ASSERT_EQ(can_sim_get_fuel_level(), 100.0f, "fuel != 100");
 }
 
 /* ── Suite 2: Message framing ────────────────────────────────────────── */
@@ -57,7 +60,8 @@ static void test_message_framing(void) {
     int known = (msg.prop_id == PROP_VEHICLE_SPEED    ||
                  msg.prop_id == PROP_GEAR_SELECTION   ||
                  msg.prop_id == PROP_ENGINE_OIL_TEMP  ||
-                 msg.prop_id == PROP_DOOR_LOCK);
+                 msg.prop_id == PROP_DOOR_LOCK        ||
+                 msg.prop_id == PROP_FUEL_LEVEL);
     ASSERT_NE(known, 0, "unknown prop_id");
 
     TEST("timestamp_ms > 0");
@@ -106,9 +110,26 @@ static void test_oil_temp(void) {
     ASSERT_EQ(final <= 90.0f, 1, "oil temp exceeded 90 C");
 }
 
-/* ── Suite 5: Message size (binary protocol) ─────────────────────────── */
+/* ── Suite 5: Fuel drain ──────────────────────────────────────────────── */
+static void test_fuel_level(void) {
+    printf("\n[Suite 5] Fuel level drain\n");
+    can_sim_init();
+    VehicleMessage msg;
+
+    float initial = can_sim_get_fuel_level();
+    for (int i = 0; i < 500; i++) can_sim_tick(&msg);
+    float after = can_sim_get_fuel_level();
+
+    TEST("fuel level drops after ticks");
+    ASSERT_GT(initial, after, "fuel didn't drop");
+
+    TEST("fuel level never goes negative");
+    ASSERT_EQ(after >= 0.0f, 1, "fuel went negative");
+}
+
+/* ── Suite 6: Message size (binary protocol) ─────────────────────────── */
 static void test_message_size(void) {
-    printf("\n[Suite 5] Binary protocol correctness\n");
+    printf("\n[Suite 6] Binary protocol correctness\n");
 
     TEST("VehicleMessage is packed (no padding)");
     /* magic(4) + prop_id(4) + value(4) + timestamp(8) = 20 bytes */
@@ -126,6 +147,7 @@ int main(void) {
     test_message_framing();
     test_speed_ramp();
     test_oil_temp();
+    test_fuel_level();
     test_message_size();
 
     printf("\n====================================================\n");
