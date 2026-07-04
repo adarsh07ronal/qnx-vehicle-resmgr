@@ -16,7 +16,7 @@ typedef struct {
     iov_t iov[1];
 } resmgr_context_t;
 
-typedef struct { int dummy; } resmgr_attr_t;
+typedef struct { unsigned nparts_max; } resmgr_attr_t;
 typedef struct { int dummy; } dispatch_t;
 typedef struct { void *ptr; } dispatch_context_t;
 
@@ -41,8 +41,10 @@ typedef struct { uint32_t nbytes; } io_read_t;
 typedef struct { struct { uint32_t nbytes; } i; } io_write_t;
 
 typedef struct {
-    int  (*read) (resmgr_context_t*, io_read_t*, iofunc_ocb_t*);
-    int  (*write)(resmgr_context_t*, io_write_t*, iofunc_ocb_t*);
+    int  (*read)    (resmgr_context_t*, io_read_t*, iofunc_ocb_t*);
+    int  (*write)   (resmgr_context_t*, io_write_t*, iofunc_ocb_t*);
+    int  (*read64)  (resmgr_context_t*, io_read_t*, iofunc_ocb_t*);
+    int  (*write64) (resmgr_context_t*, io_write_t*, iofunc_ocb_t*);
 } resmgr_io_funcs_t;
 
 /* ── Macros ── */
@@ -50,13 +52,14 @@ typedef struct {
 #define S_IFCHR         0020000
 #endif
 #define _FTYPE_ANY      0
-#define _RESMGR_NPARTS(n)   (n)
+#define _RESMGR_NPARTS(n)   (-(n))
 #define _RESMGR_NFUNCS      16
 #define _RESMGR_CONNECT_NFUNCS 8
 #define _RESMGR_IO_NFUNCS   16
 #define MSG_NOSIGNAL        0
 #define SETIOV(iov, b, l)   do { (iov)->base=(b); (iov)->len=(l); } while(0)
 #define _IO_SET_WRITE_NBYTES(c,n) ((void)(n))
+#define _IO_SET_READ_NBYTES(c,n)  ((void)(n))
 
 /* ── Stub functions ── */
 static inline void iofunc_attr_init(iofunc_attr_t *a, mode_t m, void *u, void *g)

@@ -43,7 +43,13 @@ void can_sim_init(void) {
  * Returns the PROP_* id that changed, or 0 if nothing changed.
  */
 uint32_t can_sim_tick(VehicleMessage *out) {
-    static int tick = 0;
+    /* Sentinels guarantee the first tick of each property always reports. */
+    static int     tick           = 0;
+    static float   s_last_speed   = -1.0f;
+    static int32_t s_last_gear    = -1;
+    static float   s_last_oil_temp = -1.0f;
+    static int32_t s_last_door    = -1;
+
     tick++;
 
     out->magic        = BRIDGE_MAGIC;
@@ -57,11 +63,15 @@ uint32_t can_sim_tick(VehicleMessage *out) {
         if (s_speed_kmh > 120.0f) s_speed_kmh = 0.0f;
         s_gear = (s_speed_kmh > 5.0f) ? GEAR_DRIVE : GEAR_PARK;
 
+        if (s_speed_kmh == s_last_speed) return 0;
+        s_last_speed  = s_speed_kmh;
         out->prop_id  = PROP_VEHICLE_SPEED;
         out->value.f  = s_speed_kmh;
         return PROP_VEHICLE_SPEED;
 
     case 1:  /* Gear follows speed */
+        if (s_gear == s_last_gear) return 0;
+        s_last_gear   = s_gear;
         out->prop_id  = PROP_GEAR_SELECTION;
         out->value.i  = s_gear;
         return PROP_GEAR_SELECTION;
@@ -69,12 +79,18 @@ uint32_t can_sim_tick(VehicleMessage *out) {
     case 2:  /* Oil temp warms up to 90 °C */
         s_oil_temp_c += 0.5f;
         if (s_oil_temp_c > 90.0f) s_oil_temp_c = 90.0f;
+
+        if (s_oil_temp_c == s_last_oil_temp) return 0;
+        s_last_oil_temp = s_oil_temp_c;
         out->prop_id  = PROP_ENGINE_OIL_TEMP;
         out->value.f  = s_oil_temp_c;
         return PROP_ENGINE_OIL_TEMP;
 
     case 3:  /* Door lock toggle every 40 ticks */
         if (tick % 40 == 0) s_door_locked ^= 1;
+
+        if ((int32_t)s_door_locked == s_last_door) return 0;
+        s_last_door   = s_door_locked;
         out->prop_id  = PROP_DOOR_LOCK;
         out->value.b  = s_door_locked;
         return PROP_DOOR_LOCK;
