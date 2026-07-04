@@ -10,7 +10,12 @@
 #include <sys/stat.h>
 
 /* ── Types ── */
-typedef struct { int id; } resmgr_context_t;
+typedef struct { void *base; size_t len; } iov_t;
+
+typedef struct {
+    iov_t iov[1];
+} resmgr_context_t;
+
 typedef struct { int dummy; } resmgr_attr_t;
 typedef struct { int dummy; } dispatch_t;
 typedef struct { void *ptr; } dispatch_context_t;
@@ -27,21 +32,23 @@ typedef struct _iofunc_ocb {
 
 #define RESMGR_OCB_T iofunc_ocb_t
 
-typedef struct { int nfuncs; } iofunc_funcs_t;
-#define _IOFUNC_NFUNCS 16
-
-typedef struct {
-    int  (*read) (resmgr_context_t*, void*, iofunc_ocb_t*);
-    int  (*write)(resmgr_context_t*, void*, iofunc_ocb_t*);
-} resmgr_io_funcs_t;
+/* Real QNX keeps connect ops (open/unlink/...) and io ops (read/write/...)
+ * in two distinct tables — both get populated by iofunc_func_init() and
+ * both get handed to resmgr_attach() separately. */
+typedef struct { int nfuncs; } resmgr_connect_funcs_t;
 
 typedef struct { uint32_t nbytes; } io_read_t;
 typedef struct { struct { uint32_t nbytes; } i; } io_write_t;
 
-typedef struct { void *base; size_t len; } iov_t;
+typedef struct {
+    int  (*read) (resmgr_context_t*, io_read_t*, iofunc_ocb_t*);
+    int  (*write)(resmgr_context_t*, io_write_t*, iofunc_ocb_t*);
+} resmgr_io_funcs_t;
 
 /* ── Macros ── */
+#ifndef S_IFCHR
 #define S_IFCHR         0020000
+#endif
 #define _FTYPE_ANY      0
 #define _RESMGR_NPARTS(n)   (n)
 #define _RESMGR_NFUNCS      16
@@ -55,14 +62,14 @@ typedef struct { void *base; size_t len; } iov_t;
 static inline void iofunc_attr_init(iofunc_attr_t *a, mode_t m, void *u, void *g)
     { (void)u; (void)g; a->mode = m; a->flags = 0; }
 
-static inline void iofunc_func_init(int cn, void *cf, int in, resmgr_io_funcs_t *io)
+static inline void iofunc_func_init(int cn, resmgr_connect_funcs_t *cf, int in, resmgr_io_funcs_t *io)
     { (void)cn; (void)cf; (void)in; (void)io; }
 
 static inline dispatch_t *dispatch_create(void)
     { static dispatch_t d; return &d; }
 
 static inline int resmgr_attach(dispatch_t *d, resmgr_attr_t *a, const char *path,
-    int type, int flags, resmgr_io_funcs_t *cf, iofunc_funcs_t *io, iofunc_attr_t *attr)
+    int type, int flags, resmgr_connect_funcs_t *cf, resmgr_io_funcs_t *io, iofunc_attr_t *attr)
     { (void)d;(void)a;(void)path;(void)type;(void)flags;(void)cf;(void)io;(void)attr; return 0; }
 
 static inline dispatch_context_t *dispatch_context_alloc(dispatch_t *d)

@@ -76,11 +76,15 @@ static int format_prop(uint32_t prop_id, char *buf, size_t len) {
 /* ── io_read handler: called when userspace does read() / cat ────────── */
 static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
     VehicleAttr *attr = (VehicleAttr *)ocb->attr;
-    char buf[64];
+    /* static: the reply is copied out by the framework after this function
+     * returns, so the backing memory for SETIOV must outlive the call. The
+     * dispatch loop here is single-threaded, so a shared static is safe. */
+    static char buf[64];
     int  len;
 
     if (ocb->offset > 0) {
         /* Already delivered data — signal EOF */
+        _IO_SET_READ_NBYTES(ctp, 0);
         return _RESMGR_NPARTS(0);
     }
 
@@ -88,6 +92,12 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
 
     SETIOV(ctp->iov, buf, len);
     ocb->offset += len;
+
+    /* _RESMGR_NPARTS only tells the framework how many iov parts to send —
+     * the actual byte count handed back to the caller's read() comes from
+     * ctp->status, which this sets. Omitting it silently replies with 0
+     * bytes (instant EOF) even though the iov itself has valid data. */
+    _IO_SET_READ_NBYTES(ctp, len);
 
     return _RESMGR_NPARTS(1);
 }
@@ -101,7 +111,7 @@ static int io_write(resmgr_context_t *ctp, io_write_t *msg, RESMGR_OCB_T *ocb) {
 
 /* ── Register one /dev/vehicle/* device ─────────────────────────────── */
 static void register_device(dispatch_t *dpp, resmgr_attr_t *rattr,
-                             iofunc_funcs_t *funcs, resmgr_io_funcs_t *io_funcs,
+                             resmgr_connect_funcs_t *connect_funcs, resmgr_io_funcs_t *io_funcs,
                              VehicleAttr *dev, const char *path, uint32_t prop_id)
 {
     iofunc_attr_init(&dev->attr, S_IFCHR | 0444, NULL, NULL);
@@ -109,8 +119,7 @@ static void register_device(dispatch_t *dpp, resmgr_attr_t *rattr,
     strncpy(dev->path, path, sizeof(dev->path) - 1);
 
     if (resmgr_attach(dpp, rattr, path, _FTYPE_ANY, 0,
-                      io_funcs,        /* connect funcs */
-                      (resmgr_io_funcs_t *)funcs,  /* io funcs */
+                      connect_funcs, io_funcs,
                       &dev->attr) == -1) {
         fprintf(stderr, "[resmgr] attach %s failed: %s\n", path, strerror(errno));
         exit(EXIT_FAILURE);
@@ -138,8 +147,8 @@ static void *can_tick_thread(void *arg) {
 /* ── main ────────────────────────────────────────────────────────────── */
 int main(int argc, char *argv[]) {
     resmgr_attr_t      rattr;
+    resmgr_connect_funcs_t connect_funcs;
     resmgr_io_funcs_t  io_funcs;
-    iofunc_funcs_t     ocb_funcs;
     dispatch_context_t *ctp;
     pthread_t           tick_tid;
 
@@ -151,29 +160,37 @@ int main(int argc, char *argv[]) {
     s_dpp = dispatch_create();
     if (!s_dpp) { perror("dispatch_create"); return EXIT_FAILURE; }
 
-    memset(&rattr,    0, sizeof(rattr));
-    memset(&io_funcs, 0, sizeof(io_funcs));
-    memset(&ocb_funcs,0, sizeof(ocb_funcs));
+    memset(&rattr,        0, sizeof(rattr));
+    memset(&io_funcs,     0, sizeof(io_funcs));
+    memset(&connect_funcs,0, sizeof(connect_funcs));
 
-    iofunc_func_init(_RESMGR_CONNECT_NFUNCS, (resmgr_connect_funcs_t *)&io_funcs,
+    /* io_read/io_write reply with a single iov part via SETIOV(ctp->iov, ...);
+     * without nparts_max set, resmgr_attach() allocates zero iov capacity and
+     * every read silently replies with 0 bytes (instant EOF, no error). */
+    rattr.nparts_max = 1;
+
+    iofunc_func_init(_RESMGR_CONNECT_NFUNCS, &connect_funcs,
                      _RESMGR_IO_NFUNCS,      &io_funcs);
 
-    /* Override read/write */
-    io_funcs.read  = io_read;
-    io_funcs.write = io_write;
-
-    ocb_funcs.nfuncs = _IOFUNC_NFUNCS;
+    /* Override read/write. Also wire up the 64-bit variants — QNX 8's
+     * client-side read()/write() send _IO_READ64/_IO_WRITE64 by default,
+     * and an unset .read64/.write64 silently falls back to a default
+     * handler that returns EOF, so plain .read/.write alone never fires. */
+    io_funcs.read    = io_read;
+    io_funcs.write   = io_write;
+    io_funcs.read64  = io_read;
+    io_funcs.write64 = io_write;
 
     /* ── Register /dev/vehicle/* ── */
     mkdir("/dev/vehicle", 0755);   /* create dir if absent */
 
-    register_device(s_dpp, &rattr, &ocb_funcs, &io_funcs,
+    register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
                     &s_devs[0], DEV_SPEED,    PROP_VEHICLE_SPEED);
-    register_device(s_dpp, &rattr, &ocb_funcs, &io_funcs,
+    register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
                     &s_devs[1], DEV_GEAR,     PROP_GEAR_SELECTION);
-    register_device(s_dpp, &rattr, &ocb_funcs, &io_funcs,
+    register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
                     &s_devs[2], DEV_OIL_TEMP, PROP_ENGINE_OIL_TEMP);
-    register_device(s_dpp, &rattr, &ocb_funcs, &io_funcs,
+    register_device(s_dpp, &rattr, &connect_funcs, &io_funcs,
                     &s_devs[3], DEV_DOOR_LOCK, PROP_DOOR_LOCK);
 
     /* ── Start CAN tick thread ── */
