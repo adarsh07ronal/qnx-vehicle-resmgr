@@ -1527,6 +1527,8 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
       compile), installed the APK, forwarded port 9090 with <code>adb forward</code>, and watched
       live speed/gear/oil temp/door lock/fuel values flow from the QNX QEMU VM into the app's
       on-screen dashboard in real time.</p>
+      <img src="screenshots/android_dashboard_2.png" alt="Live dashboard on the Android Automotive OS emulator showing speed, gear, oil temp, door lock, and fuel all populated with real data received from the QNX QEMU VM"
+           style="width:100%;max-width:520px;display:block;margin:.8rem 0;border:1px solid var(--border);border-radius:var(--radius);" />
       <p>I'm precise about what this does and doesn't prove: the app receives and displays the
       data correctly, but it never calls the real <code>CarPropertyManager</code> — that line is
       commented out in the source. So it proves the QNX-to-Android transport and JNI/JVM plumbing
