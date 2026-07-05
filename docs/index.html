@@ -295,21 +295,23 @@
   </div>
 
   <h2>Quick start</h2>
-  <pre><code># ── QNX side (needs QNX SDP 8.0) ──────────────────────────────────────
-source ~/qnx800/qnxsdp-env.sh
-make
-scp vehicle_resmgrd qnxuser@&lt;target-ip&gt;:/tmp/
-ssh qnxuser@&lt;target-ip&gt; "/tmp/vehicle_resmgrd &"
-ssh qnxuser@&lt;target-ip&gt; "cat /dev/vehicle/speed"
+  <pre><code># ── QNX side, real SDP + QEMU (verified) ────────────────────────────────
+source ~/qnx800/qnxsdp-env.sh &amp;&amp; make
+mkqnximage --run          # build + boot a QNX image under QEMU
+scp -P 2222 vehicle_resmgrd root@localhost:/tmp/
+ssh -p 2222 root@localhost "/tmp/vehicle_resmgrd &amp;"
+ssh -p 2222 root@localhost "cat /dev/vehicle/speed"
 
-# ── Linux host (no QNX license) ───────────────────────────────────────
+# ── Linux host, no QNX license needed ───────────────────────────────────
 make HOST=1
-./vehicle_resmgrd   # uses Linux socket stubs
+./vehicle_resmgrd   # uses qnx_stubs/, exercises pure simulator + bridge logic
 
-# ── Android side ──────────────────────────────────────────────────────
-# Build android-vhal-bridge with Android NDK r26+
-# Install as system app on AAOS emulator
-# adb shell am startservice com.adarsh.vhal/.VhalBridgeService</code></pre>
+# ── Android side, real Automotive OS emulator (verified) ───────────────
+gradle :android-vhal-bridge:assembleDebug
+emulator -avd &lt;automotive-avd&gt;             # Android 14 Automotive image
+adb forward tcp:9090 tcp:9090               # QNX guest can't reach the Android guest directly
+adb install -r android-vhal-bridge/build/outputs/apk/debug/android-vhal-bridge-debug.apk
+adb shell am start -n com.adarsh.vhal/.MainActivity   # normal user app, no system/priv install needed</code></pre>
 
   <h2>Repository layout</h2>
   <table>
@@ -322,9 +324,12 @@ make HOST=1
     <tr><td><code>android-vhal-bridge/…/VhalBridgeService.java</code></td><td><span class="badge badge-java">Java</span></td><td>Android Service — receives JNI callbacks, builds VehiclePropValue events, writes to VhalStore</td></tr>
     <tr><td><code>android-vhal-bridge/…/VehiclePropValue.java</code></td><td><span class="badge badge-java">Java</span></td><td>Mirrors the real AIDL VehiclePropValue type — the concrete "event" object each callback produces</td></tr>
     <tr><td><code>android-vhal-bridge/…/VhalStore.java</code></td><td><span class="badge badge-java">Java</span></td><td>Thread-safe in-memory property cache (simulates VHAL IPC)</td></tr>
-    <tr><td><code>tests/test_can_sim.c</code></td><td><span class="badge badge-c">C</span></td><td>Unit tests — compile and run on Linux CI, no QNX required</td></tr>
+    <tr><td><code>android-vhal-bridge/…/MainActivity.java</code></td><td><span class="badge badge-java">Java</span></td><td>Live dashboard — starts the bridge service, polls VhalStore every 500ms, renders speed/gear/oil/door/fuel on screen</td></tr>
+    <tr><td><code>android-vhal-bridge/build.gradle</code> + <code>cpp/CMakeLists.txt</code></td><td>Gradle/CMake</td><td>Makes android-vhal-bridge an actual installable app — compiles the JNI native lib and packages the APK</td></tr>
+    <tr><td><code>tests/test_can_sim.c</code></td><td><span class="badge badge-c">C</span></td><td>Unit tests — compile and run on Linux CI, no QNX required (15 cases)</td></tr>
     <tr><td><code>Makefile</code></td><td><span class="badge badge-mk">Makefile</span></td><td>Dual-target: QNX cross-compile via qcc + Linux host stub build</td></tr>
-    <tr><td><code>.github/workflows/ci.yml</code></td><td>YAML</td><td>GitHub Actions: host build, unit tests, cppcheck static analysis</td></tr>
+    <tr><td><code>.github/workflows/ci.yml</code></td><td>YAML</td><td>GitHub Actions: host build + unit tests, cppcheck static analysis (2 jobs — real QNX/Android builds are manual, see caveat below)</td></tr>
+    <tr><td><code>tools/fake_vhal_listener.py</code></td><td>Python</td><td>Stand-in Android VHAL bridge — decodes the TCP wire protocol without needing an emulator</td></tr>
   </table>
 
   <h2>Data flow — step by step</h2>
@@ -333,7 +338,8 @@ make HOST=1
     <li><code>can_tick_thread</code> calls <code>can_sim_tick()</code> every 100 ms and gets back a <code>VehicleMessage</code> struct plus the changed property ID.</li>
     <li>If the property changed, <code>bridge_send()</code> serialises the struct over TCP to <code>10.0.2.2:9090</code>.</li>
     <li>On the Android side, <code>bridge_thread</code> (inside <code>vhal_bridge.cpp</code>) calls <code>recv()</code> for exactly 20 bytes, checks <code>magic == 0xCAFEBABE</code>, then dispatches to the correct JNI callback.</li>
-    <li>The Java service writes to <code>VhalStore</code>. In a real AAOS build it calls <code>CarPropertyManager.set*()</code>.</li>
+    <li>The Java callback wraps the value in a <code>VehiclePropValue</code> object (mirroring the real AIDL type) and writes it to <code>VhalStore</code>. In a real AAOS build the next step would be <code>CarPropertyManager.set*()</code> — this project's <code>VhalStore</code> stands in for it.</li>
+    <li>Independently, <code>MainActivity</code> polls <code>VhalStore</code> every 500ms on the UI thread and renders it as a live dashboard.</li>
     <li>Meanwhile, any process on QNX that opens <code>/dev/vehicle/speed</code> gets a formatted ASCII string from the resmgr <code>io_read</code> handler — no separate IPC needed.</li>
   </ol>
 
@@ -1349,8 +1355,12 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
       </td>
       <td>
         <code>gcc -DHOST_BUILD -I./qnx_stubs</code> on Ubuntu 22.04.<br>
-        Compiles only <code>can_simulator.c</code> + test harness. Verifies logic without hardware or license.<br>
-        The QNX cross-compile CI job exists in the YAML but is disabled (<code>if: false</code>) — it documents the pipeline for teams who have the SDP.
+        CI compiles and runs <code>can_simulator.c</code> + the test harness, and compile-checks
+        <code>vehicle_bridge.c</code> standalone. It does <strong>not</strong> compile
+        <code>vehicle_resmgr.c</code> — a real QNX build/verify is a manual step
+        (<code>source qnxsdp-env.sh &amp;&amp; make</code>, then run under QEMU), same as the
+        Android build. An earlier disabled <code>build-qnx</code> job attempting to automate this
+        was removed — it was permanently gated off and non-functional even if enabled.
       </td>
     </tr>
     <tr>
@@ -1391,7 +1401,7 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
     <div class="qa-q">"Walk me through this project."</div>
     <div class="qa-a">
       <p>It's a QNX Neutrino resource manager that simulates a vehicle ECU, exposing speed, gear,
-      oil temperature, and door lock as POSIX device nodes under <code>/dev/vehicle/*</code> — so
+      oil temperature, door lock, and fuel level as POSIX device nodes under <code>/dev/vehicle/*</code> — so
       any process can <code>cat /dev/vehicle/speed</code> and get live data. It also runs a TCP
       client that pushes the same data to an Android Automotive OS bridge over the wire format
       real QNX/Android hypervisor systems use (just swapping virtio/shared-memory for a socket in
@@ -1497,10 +1507,30 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
     <div class="qa-a">
       <p>Cross-compiled with the real <code>qcc</code> toolchain, booted a QNX image under QEMU via
       <code>mkqnximage</code>, scp'd the binary in over SSH, and ran <code>cat</code>/<code>dd</code>
-      against all five device nodes directly on the target. Then I wrote a small Python script
-      (<code>tools/fake_vhal_listener.py</code>) that stands in for the Android VHAL bridge,
-      listening on the same TCP port the real bridge would, to confirm the wire protocol end-to-end
-      without needing an Android emulator at all.</p>
+      against all five device nodes directly on the target. Before setting up the Android side, I
+      first wrote a small Python script (<code>tools/fake_vhal_listener.py</code>) that stands in
+      for the Android VHAL bridge, listening on the same TCP port the real bridge would, to confirm
+      the wire protocol end-to-end without needing an emulator at all — a cheap way to isolate
+      "is the QNX side correct" from "is the Android side correct."</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q">Did you actually verify the Android side, or just assume it works?</div>
+    <div class="qa-a">
+      <p>Verified for real, on a genuine Android Automotive OS emulator (Android 14, API 34, via
+      the Android SDK command-line tools — <code>sdkmanager</code>/<code>avdmanager</code>, no
+      Android Studio needed). Confirmed via <code>adb shell service list</code> that the real
+      <code>car_service</code> (<code>android.car.ICar</code>) and the reference VHAL
+      (<code>android.hardware.automotive.vehicle@V1-emulator-service</code>) were genuinely
+      running. Built <code>android-vhal-bridge</code> with Gradle + the NDK/CMake toolchain
+      (it previously had no build system at all — just loose source files, never proven to
+      compile), installed the APK, forwarded port 9090 with <code>adb forward</code>, and watched
+      live speed/gear/oil temp/door lock/fuel values flow from the QNX QEMU VM into the app's
+      on-screen dashboard in real time.</p>
+      <p>I'm precise about what this does and doesn't prove: the app receives and displays the
+      data correctly, but it never calls the real <code>CarPropertyManager</code> — that line is
+      commented out in the source. So it proves the QNX-to-Android transport and JNI/JVM plumbing
+      genuinely work, not that this data reaches AAOS's actual vehicle property system.</p>
     </div>
   </div>
 
