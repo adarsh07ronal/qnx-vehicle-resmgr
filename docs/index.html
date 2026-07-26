@@ -1519,6 +1519,36 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
       for the Android VHAL bridge, listening on the same TCP port the real bridge would, to confirm
       the wire protocol end-to-end without needing an emulator at all — a cheap way to isolate
       "is the QNX side correct" from "is the Android side correct."</p>
+      <p>Raw transcript from that session — real QNX 8.0.0 booted under QEMU, SSH'd in, hitting the
+      genuine <code>dispatch_block()</code>/<code>MsgReceive()</code> path (not the <code>HOST=1</code>
+      stub, which never reaches this code at all):</p>
+<pre><code>$ uname -a
+QNX noname 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+
+$ ls -l /dev/vehicle/
+total 0
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 door_lock
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 fuel
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 gear
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 oil_temp
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 speed
+
+$ cat /dev/vehicle/speed
+98.00 km/h
+$ cat /dev/vehicle/gear
+DRIVE
+$ cat /dev/vehicle/oil_temp
+90.0 C
+$ cat /dev/vehicle/door_lock
+LOCKED
+$ cat /dev/vehicle/fuel
+0.0 %
+
+$ cat /dev/vehicle/speed   # re-read 4s later -- value changed, proving the CAN
+                           # sim tick loop is live and each cat is a fresh
+                           # MsgSend/MsgReceive round trip, not a cached value
+118.00 km/h</code></pre>
+      <p>Full transcript: <a href="evidence/qnx_dispatch_loop_verification.txt">evidence/qnx_dispatch_loop_verification.txt</a>.</p>
     </div>
   </div>
   <div class="qa">

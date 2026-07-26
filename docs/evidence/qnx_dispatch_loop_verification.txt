@@ -1,0 +1,42 @@
+QNX resource manager dispatch loop — live verification on real QNX SDP 8.0 under QEMU
+Captured: 2026-07-26
+
+Build + boot sequence run to produce this transcript:
+  source ~/qnx800/qnxsdp-env.sh && make          # cross-compile with real qcc, not HOST=1 stub
+  mkqnximage --run                               # build + boot a QNX 8.0 image under QEMU
+  scp -P 2222 vehicle_resmgrd root@localhost:/tmp/
+  ssh -p 2222 root@localhost "/tmp/vehicle_resmgrd &"
+  ssh -p 2222 root@localhost <the commands below>
+
+This is the real dispatch_block()/MsgReceive() path — every `cat` here is a genuine
+open()+read() from the client, turned into a MsgSend by libc, routed by the QNX
+Neutrino microkernel to vehicle_resmgrd, answered via MsgReply. Nothing here goes
+through the HOST=1 Linux stub (whose dispatch_block() just returns NULL immediately
+and never exercises this code path at all).
+
+----------------------------------------------------------------------------------
+
+$ uname -a
+QNX noname 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+
+$ ls -l /dev/vehicle/
+total 0
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 door_lock
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 fuel
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 gear
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 oil_temp
+cr--r--r--  1 root root 0,   1 2026-07-26 08:35 speed
+
+$ cat /dev/vehicle/speed
+98.00 km/h
+$ cat /dev/vehicle/gear
+DRIVE
+$ cat /dev/vehicle/oil_temp
+90.0 C
+$ cat /dev/vehicle/door_lock
+LOCKED
+$ cat /dev/vehicle/fuel
+0.0 %
+
+$ cat /dev/vehicle/speed   # re-read 4s later -- value changed, proving the CAN sim tick loop is live and each cat is a fresh MsgSend/MsgReceive round trip
+118.00 km/h
