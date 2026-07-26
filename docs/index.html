@@ -212,6 +212,13 @@
     .qa-q { background: var(--surface); padding: .7rem 1rem; font-weight: 600; color: var(--accent); }
     .qa-a { padding: .9rem 1.2rem; }
     .qa-a p:first-child { margin-top: 0; }
+
+    /* ── Difficulty / kind pills (OS interview section) ─────────────────── */
+    .pill-easy   { background: rgba(63,185,80,.15);  color: var(--accent2); }
+    .pill-medium { background: rgba(227,179,65,.15); color: #e3b341; }
+    .pill-hard   { background: rgba(248,81,73,.15);  color: var(--accent4); }
+    .pill-trick  { background: rgba(188,140,232,.15);color: #bc8ce8; }
+    .pill-code   { background: rgba(88,166,255,.15); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -1570,6 +1577,408 @@ cpm.setFloatProperty(VehiclePropertyIds.PERF_VEHICLE_SPEED, 0, 72.0f);</code></p
       semantics (which is where every real bug in this project lived) has to be verified against
       the genuine SDP and a real dispatch loop. Neither target replaces the other.</p>
     </div>
+  </div>
+
+  <h2>OS Fundamentals — Processes &amp; Threads (Top 30)</h2>
+  <p>
+    General OS-concepts material, not specific to this project, but the kind of thing an interviewer
+    pivots to right after the QNX-specific questions above to check the underlying fundamentals are
+    solid. Grouped by difficulty, plus a dedicated trick-question and programming/algorithm round.
+  </p>
+
+  <h3>Concept primer — process vs. thread</h3>
+  <table>
+    <tr><th>Property</th><th>Process</th><th>Thread</th></tr>
+    <tr><td>Address space</td><td>Own, isolated, protected by the MMU</td><td>Shared with every other thread in the same process (code, data, heap)</td></tr>
+    <tr><td>Private per-unit state</td><td>Everything</td><td>Own stack, registers, program counter, priority</td></tr>
+    <tr><td>Creation cost</td><td>Heavyweight — new page tables, new PCB, <code>fork()</code>/<code>exec()</code></td><td>Lightweight — new stack + TCB entry in the existing address space</td></tr>
+    <tr><td>Context-switch cost</td><td>Expensive — page-table-base register reload, TLB impact</td><td>Cheap — same address space, no MMU reload</td></tr>
+    <tr><td>Communication</td><td>Needs IPC (pipes, message queues, shared memory, sockets)</td><td>Direct — shared globals/heap, needs synchronization instead of transport</td></tr>
+    <tr><td>Fault isolation</td><td>A crash stays contained to that process</td><td>A crash (e.g., bad pointer write) can corrupt the whole process, all threads included</td></tr>
+  </table>
+
+  <h3>Easy — definitions and mechanics</h3>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What is a process?</div>
+    <div class="qa-a"><p>An independent, isolated unit of execution with its own virtual address space
+    and its own set of OS-managed resources (file descriptors, memory mappings, a PCB entry). The
+    MMU/page tables enforce that one process can't directly read or write another's memory.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What is a thread?</div>
+    <div class="qa-a"><p>A unit of execution inside a process that shares that process's address space
+    (code, global data, heap) with every other thread in it, but has its own stack, register set,
+    program counter, and scheduling priority. Multiple threads in one process can run concurrently,
+    or truly in parallel across cores, all seeing the same globals and heap.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What's the core difference between a process and a thread?</div>
+    <div class="qa-a"><p>Isolation vs. sharing. A process gets a protected address space it doesn't share
+    with anyone; a thread deliberately shares its parent process's address space with its sibling
+    threads, trading memory protection for cheaper creation, cheaper context switches, and easy
+    (but synchronization-hazardous) communication via shared memory.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What is context switching?</div>
+    <div class="qa-a"><p>The scheduler saving the currently running thread's CPU state — registers,
+    program counter, stack pointer — into its TCB/PCB, then loading a different thread's previously
+    saved state so the CPU resumes it exactly where it left off. If the switch also crosses process
+    boundaries, the kernel additionally reloads the page-table-base register (e.g. <code>CR3</code>
+    on x86-64), which is the extra cost that makes process switches pricier than same-process thread
+    switches.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What is a PCB (Process Control Block)?</div>
+    <div class="qa-a"><p>A kernel data structure, one per process, holding everything the OS needs to
+    pause and later resume it: PID, current state, saved register/PC values, a pointer to its page
+    tables, open file descriptors, scheduling priority, and parent/child links. Threads have the
+    analogous, smaller <strong>TCB</strong> (Thread Control Block).</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What are the typical states a process moves through?</div>
+    <div class="qa-a"><p><code>New → Ready → Running → (Waiting/Blocked) → Ready → … → Terminated</code>.
+    The scheduler dispatches a Ready process into Running; it moves to Waiting when it blocks on I/O
+    or a lock; it moves back to Ready once that I/O/lock becomes available; it can also be pushed
+    from Running back to Ready by preemption (e.g., a timer interrupt) without ever blocking.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> Multitasking vs. multithreading — what's the distinction?</div>
+    <div class="qa-a"><p>Multitasking is the OS running multiple <em>processes</em> concurrently (time-sliced
+    on one core, or truly parallel across many), each isolated from the others. Multithreading is
+    running multiple <em>threads within a single process</em> concurrently, sharing that process's
+    memory. Multithreading is one mechanism a multitasking OS offers, not a replacement for it.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> Multiprocessing vs. multithreading?</div>
+    <div class="qa-a"><p>Multiprocessing spreads work across multiple <em>processes</em> — heavier to
+    create, memory-isolated, needs IPC to communicate, but a crash in one doesn't take down the
+    others. Multithreading spreads work across multiple <em>threads in one process</em> — lighter,
+    shares memory directly, but needs explicit synchronization and a bug in one thread can corrupt
+    the whole process.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> What is a system call?</div>
+    <div class="qa-a"><p>A controlled entry point that lets user-mode code request a privileged
+    operation from the kernel — <code>read()</code>, <code>write()</code>, <code>fork()</code>, and
+    so on — invoked via a trap/software-interrupt instruction that switches the CPU into kernel mode,
+    since user code isn't allowed to touch hardware or other processes' memory directly.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-easy">Easy</span> User mode vs. kernel mode?</div>
+    <div class="qa-a"><p>User mode is a restricted CPU privilege level: an app can only touch its own
+    address space and can't execute privileged instructions (disabling interrupts, touching arbitrary
+    physical memory, reprogramming the MMU). Kernel mode is the full-privilege level the OS runs in.
+    System calls, traps, and interrupts are the controlled transitions between the two. In QNX's
+    microkernel, this line is drawn tighter than usual — even device drivers run in user mode and
+    talk to the kernel purely through message passing, unlike a monolithic kernel where drivers run
+    in kernel space.</p></div>
+  </div>
+
+  <h3>Medium — synchronization and memory</h3>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is a race condition?</div>
+    <div class="qa-a"><p>A bug where a program's correctness depends on the non-deterministic timing
+    of concurrent threads/processes touching shared state without proper synchronization. Classic
+    example: two threads doing <code>counter++</code> — a read-modify-write that isn't atomic — can
+    interleave such that one increment is silently lost.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is a critical section, and how do you protect one?</div>
+    <div class="qa-a"><p>The block of code that touches shared resource(s) and must not run on more
+    than one thread at a time. Protected with mutual-exclusion primitives — mutex, semaphore,
+    spinlock — or, for very short kernel-level sections, briefly disabling interrupts.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is a deadlock, and what are the four necessary conditions?</div>
+    <div class="qa-a"><p>A state where two or more threads are each waiting on a resource held by
+    another, forming a cycle, so none can ever proceed. The four Coffman conditions, all of which
+    must hold simultaneously: <strong>mutual exclusion</strong> (resources aren't shareable),
+    <strong>hold-and-wait</strong> (a thread holds one resource while waiting for another),
+    <strong>no preemption</strong> (a resource can't be forcibly taken back), and
+    <strong>circular wait</strong> (a cycle of threads each waiting on the next). Breaking any one
+    of the four prevents deadlock.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> Mutex vs. semaphore?</div>
+    <div class="qa-a"><p>A mutex is a binary lock <em>with ownership</em> — only the thread that
+    locked it may unlock it, and that ownership is what lets the kernel implement priority
+    inheritance. A semaphore is just a counter with no ownership concept — any thread can call
+    <code>signal()</code>, even one that never called <code>wait()</code> — which makes it suited to
+    both mutual exclusion (binary semaphore) and producer/consumer-style signaling (counting
+    semaphore), but not to priority-inheritance-safe locking.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> Binary vs. counting semaphore?</div>
+    <div class="qa-a"><p>A binary semaphore's value is 0 or 1 — it models a single lock-like
+    resource. A counting semaphore's value ranges 0..N — it models N interchangeable instances of a
+    resource, e.g. a bounded buffer's producer/consumer scheme uses two counting semaphores,
+    <code>empty</code> and <code>full</code>, to track available slots in each direction.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is priority inversion?</div>
+    <div class="qa-a"><p>When a high-priority thread blocks waiting for a lock held by a
+    low-priority thread, and one or more medium-priority threads then preempt that low-priority
+    holder (since they outrank it), indefinitely delaying the lock release — and therefore the
+    high-priority thread — even though the mediums have nothing to do with the shared resource.
+    (The famous real-world case: Mars Pathfinder.) RTOSes fix this with priority inheritance: the
+    lock holder is temporarily boosted to the waiting thread's priority for as long as it holds the
+    lock, so mediums can no longer preempt it.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> Spinlock vs. mutex — when do you use each?</div>
+    <div class="qa-a"><p>A spinlock busy-waits in a tight loop until the lock frees — burns CPU, but
+    has near-zero acquire latency and no context-switch cost, good for very short critical sections
+    or code that can't sleep (interrupt handlers, kernel code). A mutex instead puts the blocked
+    thread to sleep and hands the CPU to someone else — better for longer critical sections, at the
+    cost of a context switch and wake-up latency on contention.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is virtual memory, and why do we need it?</div>
+    <div class="qa-a"><p>An abstraction where each process gets what looks like its own contiguous
+    address space, mapped by the MMU via page tables to physical RAM (or paged out to disk). It
+    gives process isolation (one can't read/write another's memory), lets a process's address space
+    exceed physical RAM (demand paging), and frees programs from needing to know or negotiate their
+    physical memory layout.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> What is thrashing?</div>
+    <div class="qa-a"><p>When the system spends more time paging memory in and out than doing useful
+    work, because physical RAM is too small for the combined working set of active processes — CPU
+    utilization collapses even though disk/paging activity is maxed out. Fixed by reducing the
+    degree of multiprogramming (fewer concurrent processes) or adding RAM.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-medium">Medium</span> Paging vs. segmentation?</div>
+    <div class="qa-a"><p>Paging splits an address space into fixed-size pages mapped independently to
+    physical frames — simple, avoids external fragmentation, but a page doesn't correspond to any
+    logical program structure. Segmentation splits by logical unit (code, stack, heap) at variable
+    sizes — matches how programmers think about memory, but can suffer external fragmentation. Most
+    modern general-purpose OSes use paging, or a paging+segmentation hybrid (x86).</p></div>
+  </div>
+
+  <h3>Difficult — classic problems and systems internals</h3>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> Explain the producer-consumer problem and solve it with semaphores.</div>
+    <div class="qa-a"><p>A bounded buffer of size N is shared between producer and consumer threads.
+    Use two counting semaphores — <code>empty</code> initialized to N (free slots) and
+    <code>full</code> initialized to 0 (filled slots) — plus a binary <code>mutex</code> to protect
+    the buffer index itself.</p>
+<pre><code>// producer
+wait(empty);      // block if no free slot
+wait(mutex);
+buffer_put(item);
+signal(mutex);
+signal(full);      // wake a waiting consumer
+
+// consumer
+wait(full);        // block if nothing to consume
+wait(mutex);
+item = buffer_get();
+signal(mutex);
+signal(empty);      // wake a waiting producer</code></pre>
+    <p>Order matters: <code>mutex</code> must always be the <em>innermost</em> wait/signal pair. If
+    a thread waited on <code>mutex</code> before <code>empty</code>/<code>full</code>, it could hold
+    the mutex while blocked on a resource count, starving the other side of the buffer entirely.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> How does priority inheritance actually work in an RTOS like QNX?</div>
+    <div class="qa-a"><p>QNX mutexes support the <code>PTHREAD_PRIO_INHERIT</code> protocol. When a
+    high-priority thread blocks on a mutex currently held by a lower-priority thread, the kernel
+    temporarily raises the holder's effective scheduling priority to match the highest-priority
+    thread waiting on it, for exactly as long as it holds the lock — so it can't be preempted by
+    unrelated medium-priority threads. Once it unlocks, its priority drops back to its true level.
+    QNX also offers priority-ceiling protocols as an alternative, where a mutex is pre-assigned the
+    priority of its highest possible caller up front rather than boosting reactively.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> Livelock vs. deadlock — what's the difference?</div>
+    <div class="qa-a"><p>In deadlock, threads are blocked and idle, waiting forever — nothing runs.
+    In livelock, threads are actively running and continuously changing state in response to each
+    other, but never making forward progress — like two people in a hallway each stepping the same
+    direction trying to avoid the other, forever. A common cause is naive deadlock-avoidance retry
+    logic where both sides back off and retry in lockstep, repeating the collision indefinitely.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> Monolithic kernel vs. microkernel — and where does QNX sit?</div>
+    <div class="qa-a"><p>In a monolithic kernel, OS services — drivers, filesystems, the network
+    stack — run in kernel space, in the same address space as the scheduler and memory manager: fast
+    (direct function calls, no message-passing overhead) but a bug in any one driver can crash the
+    entire kernel. In a microkernel, only the bare essentials — IPC, scheduling, minimal memory
+    management, interrupt dispatch — run in kernel space; everything else runs as ordinary user-space
+    processes communicating via message passing. Safer (a crashed driver process can be restarted
+    without rebooting the machine) at the cost of IPC overhead per call. QNX Neutrino is a
+    microkernel — which is exactly what this project's resource manager exploits: <code>vehicle_resmgrd</code>
+    is nothing but an ordinary user-space process that registers a pathname with the kernel's
+    Pathname Space and answers <code>MsgReceive</code> calls, the same mechanism any real driver
+    uses.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> What actually happens during a context switch, at the hardware level?</div>
+    <div class="qa-a"><p>A timer interrupt or system call traps into the kernel. The kernel saves
+    the interrupted thread's general-purpose registers, program counter, and stack pointer into its
+    TCB. The scheduler picks the next thread to run. If the switch also crosses a process boundary
+    (not just a thread switch within one process), the kernel updates the page-table-base register —
+    <code>CR3</code> on x86-64, <code>TTBR0/1</code> on ARM — which invalidates the relevant portion
+    of the TLB unless the CPU tags entries per-address-space (ASIDs/PCIDs), in which case a full
+    flush can be avoided. The kernel then restores the new thread's saved registers/PC/SP and returns
+    from the trap, resuming execution as the new thread. The TLB/cache-miss cost that follows a
+    process switch is real overhead beyond just the register save/restore instructions — one reason
+    thread switches within a process are cheaper than switches across processes.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-hard">Hard</span> Dining philosophers — what's a deadlock-free solution?</div>
+    <div class="qa-a"><p>N philosophers sit around a table with N forks between them; each needs both
+    adjacent forks to eat. The naive "everyone picks up their left fork first" strategy deadlocks if
+    all N grab their left fork simultaneously — classic circular wait. Fix by resource ordering:
+    number the forks 0..N-1, and have every philosopher pick up their <em>lower-numbered</em> fork
+    first, then the higher-numbered one. That makes fork-acquisition order globally consistent,
+    which breaks the circular-wait condition, since one identifiable philosopher (the one between
+    fork N-1 and fork 0) is always forced to reach for the low-numbered fork first instead of the
+    "natural" high one, preventing the cycle from ever closing. An alternative fix is admission
+    control: an entry semaphore initialized to N-1 that only allows N-1 philosophers to attempt
+    eating at once, which breaks the hold-and-wait condition instead.</p></div>
+  </div>
+
+  <h3>Trick questions — watch the wording</h3>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-trick">Trick</span> Can a process exist with zero threads?</div>
+    <div class="qa-a"><p>No. Every process has at least one thread of execution — commonly called the
+    main thread — the moment it starts running. A process with literally zero threads has nothing
+    left to schedule and is, for practical purposes, already a terminated/zombie process, not a
+    running one.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-trick">Trick</span> Does adding more threads always make a program faster?</div>
+    <div class="qa-a"><p>No. Beyond the number of available cores, extra threads add
+    context-switch and cache-thrashing overhead. If threads contend heavily on a shared lock, adding
+    more just increases contention — Amdahl's Law caps the achievable speedup by the size of the
+    serial/critical-section portion of the work. And on runtimes with a global interpreter lock
+    (e.g., CPython's GIL), extra CPU-bound threads don't even run in parallel at all.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-trick">Trick</span> Is a mutex just a binary semaphore with a different name?</div>
+    <div class="qa-a"><p>No — they look similar but differ in ownership. A mutex is owned by whichever
+    thread locked it, and only that thread may unlock it; that ownership is exactly what lets the
+    kernel implement priority inheritance. A semaphore has no ownership concept at all — any thread
+    can call <code>signal()</code>, even one that never called <code>wait()</code> — which is useful
+    for producer/consumer signaling but disqualifies it from priority-inheritance-safe locking.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-trick">Trick</span> If a thread finishes and a new one is created, can it reuse the old thread's ID?</div>
+    <div class="qa-a"><p>Yes — on POSIX systems, thread IDs (<code>pthread_t</code>) are typically
+    recycled once a thread has been joined/detached and fully cleaned up. Code that stashes a raw
+    thread ID to "identify" a specific thread later, without also tracking a generation counter or
+    liveness flag, can silently confuse an old, finished thread with a brand-new, unrelated one that
+    happened to get the same ID.</p></div>
+  </div>
+
+  <h3>Programming round — algorithms you should be able to code</h3>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-code">Code</span> Implement a thread-safe bounded buffer (producer/consumer) with POSIX semaphores.</div>
+    <div class="qa-a"><p>Same structure as the conceptual answer above, but as real C using
+    <code>&lt;semaphore.h&gt;</code>. The key invariant to say out loud: <code>mutex</code> protects
+    the buffer indices, <code>empty</code>/<code>full</code> gate how many items can be in flight —
+    and they must be waited on in that order (resource count, then mutex) to avoid deadlocking a
+    thread that's holding the mutex while blocked on a resource count.</p>
+<pre><code>#define N 8
+static int buf[N];
+static int head = 0, tail = 0;
+static sem_t empty, full, mutex;
+
+void init(void) {
+    sem_init(&empty, 0, N);   // N free slots
+    sem_init(&full,  0, 0);   // 0 filled slots
+    sem_init(&mutex, 0, 1);   // binary lock
+}
+
+void producer(int item) {
+    sem_wait(&empty);
+    sem_wait(&mutex);
+    buf[tail] = item;
+    tail = (tail + 1) % N;
+    sem_post(&mutex);
+    sem_post(&full);
+}
+
+int consumer(void) {
+    sem_wait(&full);
+    sem_wait(&mutex);
+    int item = buf[head];
+    head = (head + 1) % N;
+    sem_post(&mutex);
+    sem_post(&empty);
+    return item;
+}</code></pre>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-code">Code</span> Simulate Round Robin scheduling and compute average waiting time.</div>
+    <div class="qa-a"><p>Algorithm: maintain a FIFO ready queue of processes. Pop the front process,
+    run it for <code>min(quantum, remaining_burst)</code>, advance the clock by that amount. If it
+    still has burst time left, push it to the back of the queue (behind anything that arrived while
+    it was running); otherwise record its completion time. Waiting time per process =
+    completion time − arrival time − total burst time.</p>
+    <p>Worked example, quantum = 4, all arriving at t=0:</p>
+    <table>
+      <tr><th>Process</th><th>Burst</th></tr>
+      <tr><td>P1</td><td>5</td></tr>
+      <tr><td>P2</td><td>3</td></tr>
+      <tr><td>P3</td><td>7</td></tr>
+    </table>
+    <p>Execution order: P1(0-4, 1 left) → P2(4-7, done) → P3(7-11, 3 left) → P1(11-12, done) →
+    P3(12-15, done). Completion times: P1=12, P2=7, P3=15. Waiting time = completion − arrival −
+    burst → P1: 12-0-5=7, P2: 7-0-3=4, P3: 15-0-7=8. Average = (7+4+8)/3 ≈ <strong>6.33</strong>.
+    The general trap people fall into: forgetting that a process re-queued mid-run goes
+    <em>behind</em> processes that arrived during its slice, not straight back to the front.</p>
+    </div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-code">Code</span> Implement a spinlock with GCC atomic builtins.</div>
+    <div class="qa-a"><p>A spinlock needs one atomic read-modify-write instruction — test-and-set or
+    compare-and-swap — so that only one thread can ever observe the lock as "was free, now mine" at
+    a time, with no window for two threads to both think they acquired it.</p>
+<pre><code>typedef struct { volatile int locked; } spinlock_t;
+
+void spin_lock(spinlock_t *l) {
+    while (__atomic_exchange_n(&l->locked, 1, __ATOMIC_ACQUIRE))
+        ;   // busy-wait: someone else already holds it
+}
+
+void spin_unlock(spinlock_t *l) {
+    __atomic_store_n(&l->locked, 0, __ATOMIC_RELEASE);
+}</code></pre>
+    <p><code>__ATOMIC_ACQUIRE</code>/<code>__ATOMIC_RELEASE</code> matter as much as the atomicity
+    itself: acquire ordering stops the CPU/compiler from reordering the critical section's reads
+    ahead of the lock acquisition, and release ordering stops writes inside the critical section from
+    being reordered past the unlock — without that, another core could observe partially-written
+    state even though the lock variable itself was updated atomically.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-code">Code</span> Explain the Banker's Algorithm for deadlock avoidance.</div>
+    <div class="qa-a"><p>Given each process's maximum possible resource claim, its current allocation,
+    and the system's available resources, the Banker's Algorithm decides whether granting a new
+    resource request would leave the system in a <em>safe state</em> — one where there exists at
+    least one order to run all processes to completion without deadlock — before actually granting
+    it.</p>
+    <p>Safety check: repeatedly look for any process whose remaining need (<code>max − allocation</code>)
+    is ≤ currently available resources; if found, pretend it runs to completion and adds its
+    allocation back to available, then repeat. If every process can be "finished" this way, the
+    state is safe. If you get stuck with processes left over that can never be satisfied, it's
+    unsafe — a request that would lead there gets rejected (the process just has to wait), which is
+    what avoids the deadlock instead of merely detecting it after the fact.</p></div>
+  </div>
+  <div class="qa">
+    <div class="qa-q"><span class="pill pill-code">Code</span> Design an O(1) LRU cache.</div>
+    <div class="qa-a"><p>Combine a hash map (key → node pointer, for O(1) lookup) with a doubly linked
+    list ordered by recency (front = most-recently-used, back = least). On <code>get(key)</code>,
+    look up the node via the map, then unlink it and re-insert it at the front. On
+    <code>put(key, value)</code>, if the key exists, update and move-to-front the same way; if not,
+    insert a new node at the front, and if that pushes size over capacity, remove the node at the
+    back <em>and</em> erase its entry from the map. Every operation — lookup, move, insert, evict —
+    is O(1) because linked-list splicing needs no traversal once you already hold the node pointer
+    from the hash map; the map is what turns "find where this key sits in the list" from an O(n) scan
+    into an O(1) jump.</p></div>
   </div>
 
 </div>
